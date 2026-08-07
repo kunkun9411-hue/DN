@@ -11,6 +11,7 @@
     "test": "node --test tests/**/*.test.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.112.2",
     "clsx": "2.1.1",
     "framer-motion": "13.0.0",
     "lucide-react": "1.29.0",
@@ -21,10 +22,10 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "3.3.1",
     "@types/node": "24.10.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "@eslint/eslintrc": "3.3.1",
     "autoprefixer": "10.4.21",
     "eslint": "9.39.1",
     "eslint-config-next": "16.3.0",
@@ -33,3 +34,4 @@
     "typescript": "5.9.3"
   }
 }
+
