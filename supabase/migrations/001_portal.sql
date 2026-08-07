@@ -87,6 +87,19 @@ as $$
   );
 $$;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -118,8 +131,9 @@ create policy "profiles_select_self_or_staff" on public.profiles
   for select to authenticated using (id = auth.uid() or public.is_staff());
 
 drop policy if exists "profiles_update_staff" on public.profiles;
-create policy "profiles_update_staff" on public.profiles
-  for update to authenticated using (public.is_staff()) with check (public.is_staff());
+drop policy if exists "profiles_update_admin" on public.profiles;
+create policy "profiles_update_admin" on public.profiles
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists "systems_select_active_or_staff" on public.systems;
 create policy "systems_select_active_or_staff" on public.systems
@@ -127,7 +141,7 @@ create policy "systems_select_active_or_staff" on public.systems
 
 drop policy if exists "systems_staff_write" on public.systems;
 create policy "systems_staff_write" on public.systems
-  for all to authenticated using (public.is_staff()) with check (public.is_staff());
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists "user_systems_select_own_or_staff" on public.user_systems;
 create policy "user_systems_select_own_or_staff" on public.user_systems
@@ -135,7 +149,7 @@ create policy "user_systems_select_own_or_staff" on public.user_systems
 
 drop policy if exists "user_systems_staff_write" on public.user_systems;
 create policy "user_systems_staff_write" on public.user_systems
-  for all to authenticated using (public.is_staff()) with check (public.is_staff());
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists "tickets_select_own_or_staff" on public.tickets;
 create policy "tickets_select_own_or_staff" on public.tickets
@@ -167,11 +181,56 @@ drop policy if exists "audit_staff_only" on public.audit_log;
 create policy "audit_staff_only" on public.audit_log
   for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
+create or replace function public.set_system_access(
+  p_user_id uuid,
+  p_system_id uuid,
+  p_status public.system_status
+)
+returns public.user_systems
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_access public.user_systems;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can change system access';
+  end if;
+
+  update public.user_systems
+  set
+    status = p_status,
+    granted_at = case when p_status = 'active' then coalesce(granted_at, now()) else granted_at end,
+    revoked_at = case when p_status = 'revoked' then now() else null end,
+    updated_at = now()
+  where user_id = p_user_id and system_id = p_system_id
+  returning * into updated_access;
+
+  if not found then
+    raise exception 'System access request not found';
+  end if;
+
+  insert into public.audit_log (actor_id, action, entity_type, entity_id, metadata)
+  values (
+    auth.uid(),
+    'system_access_' || p_status::text,
+    'user_system',
+    p_system_id,
+    jsonb_build_object('user_id', p_user_id, 'system_id', p_system_id, 'status', p_status::text)
+  );
+
+  return updated_access;
+end;
+$$;
+
+revoke all on function public.set_system_access(uuid, uuid, public.system_status) from public;
+grant execute on function public.set_system_access(uuid, uuid, public.system_status) to authenticated;
+
 insert into public.systems (slug, name, category, description)
 values
   ('metin2-core', 'Metin2 Core System', 'Metin2', 'Systeme, Erweiterungen und wartbare Core-Anpassungen.'),
-  ('palworld-toolkit', 'Palworld Toolkit', 'Palworld', 'Mods, Tools und Server-Workflows fÃ¼r Palworld.'),
+  ('palworld-toolkit', 'Palworld Toolkit', 'Palworld', 'Mods, Tools und Server-Workflows für Palworld.'),
   ('minecraft-network', 'Minecraft Network Tools', 'Minecraft', 'Plugins, Netzwerkbausteine und Community-Funktionen.'),
-  ('web-operations', 'Web & Operations', 'Web & Tools', 'Dashboards, interne Tools und sichere BetriebsablÃ¤ufe.')
+  ('web-operations', 'Web & Operations', 'Web & Tools', 'Dashboards, interne Tools und sichere Betriebsabläufe.')
 on conflict (slug) do nothing;
-
