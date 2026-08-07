@@ -25,7 +25,9 @@ import {
   Users,
 } from 'lucide-react';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
-import { previewMembers, previewRequests, previewSystems, previewTickets, type PortalSystem, type PortalTicket } from '@/lib/portal-data';
+
+type PortalSystem = { slug: string; name: string; category: string; description: string; status: 'pending' | 'active' | 'paused' | 'revoked'; updatedAt: string };
+type PortalTicket = { id: string; subject: string; status: 'open' | 'in_progress' | 'waiting' | 'closed'; priority: 'normal' | 'high'; updatedAt: string };
 
 type PortalShellProps = {
   eyebrow: string;
@@ -78,6 +80,10 @@ export function SetupNotice() {
     <div><strong>Portal-Backend wird eingerichtet</strong><p>Die OberflÃ¤che und die Rechte-Struktur stehen. FÃ¼r echte Konten wird noch das Supabase-Projekt verbunden â€“ bis dahin bleibt diese Vorschau sicher ohne Demo-Zugangsdaten.</p></div>
     <Link className="text-link" href="/datenschutz">Datenschutz <ArrowRight size={14} /></Link>
   </div>;
+}
+
+export function PortalUnavailable({ area = 'Portal' }: { area?: string }) {
+  return <main className="portal-page container-wide"><div className="portal-locked"><span className="portal-locked-icon"><LockKeyhole size={22} /></span><span className="eyebrow">DuoNerds / {area}</span><h1>Dieser Bereich ist noch nicht Ã¶ffentlich freigeschaltet.</h1><p>Die Portal-OberflÃ¤che ist vorbereitet, aber noch nicht mit einem echten Backend verbunden. Deshalb zeigen wir hier bewusst keine Beispielkonten, Tickets oder internen Daten.</p><div className="hero-actions"><Link className="button-duo button-primary" href="/login">Zum Login <ArrowRight size={15} /></Link><Link className="button-duo button-ghost" href="/#kontakt">Frage stellen <MessageSquareText size={15} /></Link></div></div></main>;
 }
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
@@ -143,8 +149,8 @@ function StatusPill({ status }: { status: string }) {
 export function CustomerDashboard() {
   const router = useRouter();
   const supabase = getSupabaseBrowserClient();
-  const [systems, setSystems] = useState<PortalSystem[]>(previewSystems);
-  const [tickets, setTickets] = useState<PortalTicket[]>(previewTickets);
+  const [systems, setSystems] = useState<PortalSystem[]>([]);
+  const [tickets, setTickets] = useState<PortalTicket[]>([]);
   const [displayName, setDisplayName] = useState('Projekt Nordwind');
   const [loading, setLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState('');
@@ -183,6 +189,7 @@ export function CustomerDashboard() {
   }
 
   const activeSystems = useMemo(() => systems.filter((system) => system.status === 'active').length, [systems]);
+  if (!supabase) return <PortalUnavailable area="Kundenbereich" />;
   if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Portal wird geladen â€¦</div></main>;
 
   return <PortalShell eyebrow="Kundenbereich" title={`Moin, ${displayName}.`} description="Hier siehst du, was gerade lÃ¤uft, welche Systeme freigegeben sind und wo wir als NÃ¤chstes ansetzen." active="overview">
@@ -202,7 +209,7 @@ export function CustomerDashboard() {
 export function TicketsDashboard() {
   const supabase = getSupabaseBrowserClient();
   const router = useRouter();
-  const [tickets, setTickets] = useState(previewTickets);
+  const [tickets, setTickets] = useState<PortalTicket[]>([]);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState('');
@@ -218,6 +225,7 @@ export function TicketsDashboard() {
     else if (result.data) { setTickets((current) => [{ id: result.data.id, subject: result.data.subject, status: result.data.status, priority: result.data.priority, updatedAt: 'gerade eben' }, ...current]); setSubject(''); setDescription(''); setMessage('Ticket angelegt. Wir melden uns, sobald wir es eingeordnet haben.'); }
   }
 
+  if (!supabase) return <PortalUnavailable area="Support" />;
   return <PortalShell eyebrow="Kundenbereich / Support" title="Tickets, die weiterhelfen." description="Kurze Wege, klare Antworten und ein sauberer Verlauf fÃ¼r alles, was in deinem Projekt ansteht." active="tickets">
     {!isSupabaseConfigured && <SetupNotice />}
     <div className="portal-toolbar"><div><span className="portal-kicker">Support-Verlauf</span><p>Jede Anfrage bleibt nachvollziehbar an einem Ort.</p></div><span className="portal-live-state"><span /> Support erreichbar</span></div>
@@ -227,8 +235,9 @@ export function TicketsDashboard() {
 
 export function SystemsDashboard() {
   const supabase = getSupabaseBrowserClient();
-  const [systems, setSystems] = useState(previewSystems);
+  const [systems, setSystems] = useState<PortalSystem[]>([]);
   useEffect(() => { if (!supabase) return; void supabase.auth.getUser().then(async ({ data }) => { if (!data.user) return; const result = await supabase.from('user_systems').select('status, updated_at, systems(slug, name, category, description)').eq('user_id', data.user.id); if (!result.error && result.data) { const rows = result.data as unknown as Array<{ status: PortalSystem['status']; updated_at: string; systems: Omit<PortalSystem, 'status' | 'updatedAt'> | null }>; setSystems(rows.filter((row) => row.systems).map((row) => ({ ...row.systems!, status: row.status, updatedAt: new Date(row.updated_at).toLocaleDateString('de-DE') }))); } }); }, [supabase]);
+  if (!supabase) return <PortalUnavailable area="Systeme & Freigaben" />;
   return <PortalShell eyebrow="Kundenbereich / Systeme" title="Freigaben mit Ãœbersicht." description="Du siehst jederzeit, welche Bausteine aktiv sind, geprÃ¼ft werden oder gerade bewusst pausieren." active="systems">
     {!isSupabaseConfigured && <SetupNotice />}
     <div className="system-intro"><span className="system-intro-icon"><BadgeCheck size={24} /></span><div><span className="portal-kicker">Transparente Berechtigungen</span><h2>Wir schalten nur frei, was zu deinem Projekt gehÃ¶rt.</h2><p>Neue Systeme beantragst du direkt Ã¼ber den Support. Wir prÃ¼fen Kontext, Version und ZustÃ¤ndigkeit, bevor etwas im Account sichtbar wird.</p></div></div>
@@ -239,14 +248,15 @@ export function SystemsDashboard() {
 export function AdminDashboard() {
   const supabase = getSupabaseBrowserClient();
   const router = useRouter();
-  const [members, setMembers] = useState(previewMembers);
-  const [requests, setRequests] = useState(previewRequests);
+  const [members, setMembers] = useState<Array<{ name: string; email: string; role: string; status: string; initials: string }>>([]);
+  const [requests, setRequests] = useState<Array<{ name: string; system: string; requestedAt: string; initials: string }>>([]);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [message, setMessage] = useState('');
 
   useEffect(() => { if (!supabase) return; let mounted = true; void supabase.auth.getUser().then(async ({ data }) => { if (!data.user) { router.replace('/login'); return; } const profile = await supabase.from('profiles').select('role').eq('id', data.user.id).single(); if (profile.data?.role !== 'admin' && profile.data?.role !== 'support') { router.replace('/dashboard'); return; } const [membersResult, requestResult] = await Promise.all([supabase.from('profiles').select('id, display_name, role, created_at').order('created_at', { ascending: false }).limit(10), supabase.from('user_systems').select('status, updated_at, profiles(display_name), systems(name)').eq('status', 'pending').limit(10)]); if (!mounted) return; if (!membersResult.error && membersResult.data) setMembers(membersResult.data.map((member) => ({ name: member.display_name || 'Ohne Namen', email: member.id, role: member.role === 'admin' ? 'Admin' : member.role === 'support' ? 'Support' : 'Kunde', status: 'Aktiv', initials: (member.display_name || 'DN').slice(0, 2).toUpperCase() }))); if (!requestResult.error && requestResult.data) { const rows = requestResult.data as unknown as Array<{ updated_at: string; profiles: { display_name: string } | null; systems: { name: string } | null }>; setRequests(rows.filter((row) => row.profiles && row.systems).map((row) => ({ name: row.profiles!.display_name, system: row.systems!.name, requestedAt: new Date(row.updated_at).toLocaleDateString('de-DE'), initials: row.profiles!.display_name.slice(0, 2).toUpperCase() }))); } setLoading(false); }); return () => { mounted = false; }; }, [router, supabase]);
 
   async function signOut() { if (supabase) await supabase.auth.signOut(); router.push('/login'); }
+  if (!supabase) return <PortalUnavailable area="Administration" />;
   if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Berechtigungen werden geprÃ¼ft â€¦</div></main>;
   return <PortalShell eyebrow="DuoNerds / Admin" title="Ordnung fÃ¼r jedes Projekt." description="Freigaben, Nutzer und Support bleiben an einem Ort â€“ mit nachvollziehbaren Entscheidungen statt verstreuten Nachrichten." active="admin">
     {!isSupabaseConfigured && <SetupNotice />}
