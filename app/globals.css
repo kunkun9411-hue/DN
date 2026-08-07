@@ -190,10 +190,7 @@ button { cursor: pointer; }
 .footer-status span { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
 .cookie-banner { position: fixed; right: 18px; bottom: 18px; left: 18px; z-index: 60; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 18px; border: 1px solid #383842; border-radius: 15px; background: rgba(26,26,30,.96); box-shadow: 0 20px 60px rgba(0,0,0,.4); backdrop-filter: blur(16px); }
 .cookie-banner strong { display: block; font-size: .82rem; }
-.cooki…9245 tokens truncated…700; }
-.company-hero-note p { margin: 0; color: var(--text); font-size: .9rem; line-height: 1.6; }
-.company-principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 32px 0 78px; }
-.company-principle { padding: 23px 0; border-top: 1px solid var(--line); }
+.cooki…9313 tokens truncated…--line); }
 .company-principle > span { color: var(--accent-soft); font-family: DuoMono, monospace; font-size: .62rem; }
 .company-principle h2 { margin: 32px 0 9px; color: var(--text); font-size: 1.25rem; font-weight: 600; letter-spacing: -.035em; }
 .company-principle p { max-width: 330px; margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.65; }
@@ -369,6 +366,9 @@ button { cursor: pointer; }
 .avatar-small { display: grid; flex: 0 0 auto; width: 32px; height: 32px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--accent-soft); background: rgba(181,139,88,.08); font-family: DuoMono, monospace; font-size: .58rem; }
 .mini-action { flex: 0 0 auto; padding: 7px 9px; border: 1px solid rgba(181,139,88,.35); border-radius: 6px; color: var(--accent-soft); background: transparent; font-size: .62rem; }
 .mini-action:hover { color: var(--ink); background: var(--accent); }
+.mini-action:disabled { cursor: not-allowed; opacity: .48; }
+.portal-empty-row { display: flex; align-items: center; gap: 10px; padding: 18px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; }
+.portal-empty-row .text-link { margin-left: auto; }
 .member-role, .member-state { flex: 0 0 auto; color: var(--muted); font-size: .62rem; }
 .member-state { color: #88c7a5; }
 
@@ -403,4 +403,3 @@ button { cursor: pointer; }
   .auth-card { padding: 20px; }
   .portal-bottom-actions { flex-wrap: wrap; }
 }
-
