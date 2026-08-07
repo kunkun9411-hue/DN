@@ -25,6 +25,13 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+alter table public.profiles add column if not exists discord_id text;
+alter table public.profiles add column if not exists discord_username text;
+alter table public.profiles add column if not exists discord_global_name text;
+alter table public.profiles add column if not exists discord_avatar_url text;
+alter table public.profiles add column if not exists discord_synced_at timestamptz;
+create unique index if not exists profiles_discord_id_key on public.profiles (discord_id) where discord_id is not null;
+
 create table if not exists public.systems (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
@@ -43,6 +50,35 @@ create table if not exists public.user_systems (
   revoked_at timestamptz,
   updated_at timestamptz not null default now(),
   primary key (user_id, system_id)
+);
+
+create table if not exists public.discord_memberships (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  discord_user_id text not null,
+  guild_id text not null,
+  username text not null default '',
+  global_name text not null default '',
+  avatar_url text,
+  role_ids text[] not null default '{}',
+  is_member boolean not null default false,
+  synced_at timestamptz not null default now()
+);
+
+create table if not exists public.product_role_access (
+  product_id text not null,
+  discord_role_id text not null,
+  label text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (product_id, discord_role_id)
+);
+
+create table if not exists public.user_product_access (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  product_id text not null,
+  granted_via_role_id text not null,
+  granted_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, product_id)
 );
 
 create table if not exists public.tickets (
@@ -107,9 +143,21 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, display_name)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', ''))
-  on conflict (id) do nothing;
+  insert into public.profiles (id, display_name, discord_id, discord_username, discord_global_name, discord_avatar_url)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'global_name', new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name', new.raw_user_meta_data ->> 'display_name', ''),
+    coalesce(new.raw_user_meta_data ->> 'provider_id', new.raw_user_meta_data ->> 'sub'),
+    coalesce(new.raw_user_meta_data ->> 'user_name', new.raw_user_meta_data ->> 'username', ''),
+    coalesce(new.raw_user_meta_data ->> 'global_name', ''),
+    new.raw_user_meta_data ->> 'avatar_url'
+  )
+  on conflict (id) do update set
+    display_name = case when public.profiles.display_name = '' then excluded.display_name else public.profiles.display_name end,
+    discord_id = coalesce(excluded.discord_id, public.profiles.discord_id),
+    discord_username = coalesce(nullif(excluded.discord_username, ''), public.profiles.discord_username),
+    discord_global_name = coalesce(nullif(excluded.discord_global_name, ''), public.profiles.discord_global_name),
+    discord_avatar_url = coalesce(excluded.discord_avatar_url, public.profiles.discord_avatar_url);
   return new;
 end;
 $$;
@@ -122,6 +170,9 @@ create trigger on_auth_user_created
 alter table public.profiles enable row level security;
 alter table public.systems enable row level security;
 alter table public.user_systems enable row level security;
+alter table public.discord_memberships enable row level security;
+alter table public.product_role_access enable row level security;
+alter table public.user_product_access enable row level security;
 alter table public.tickets enable row level security;
 alter table public.ticket_messages enable row level security;
 alter table public.audit_log enable row level security;
@@ -150,6 +201,22 @@ create policy "user_systems_select_own_or_staff" on public.user_systems
 drop policy if exists "user_systems_staff_write" on public.user_systems;
 create policy "user_systems_staff_write" on public.user_systems
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "discord_memberships_select_own_or_staff" on public.discord_memberships;
+create policy "discord_memberships_select_own_or_staff" on public.discord_memberships
+  for select to authenticated using (user_id = auth.uid() or public.is_staff());
+
+drop policy if exists "product_role_access_select_staff" on public.product_role_access;
+create policy "product_role_access_select_staff" on public.product_role_access
+  for select to authenticated using (public.is_staff());
+
+drop policy if exists "product_role_access_admin_write" on public.product_role_access;
+create policy "product_role_access_admin_write" on public.product_role_access
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "user_product_access_select_own_or_staff" on public.user_product_access;
+create policy "user_product_access_select_own_or_staff" on public.user_product_access
+  for select to authenticated using (user_id = auth.uid() or public.is_staff());
 
 drop policy if exists "tickets_select_own_or_staff" on public.tickets;
 create policy "tickets_select_own_or_staff" on public.tickets
