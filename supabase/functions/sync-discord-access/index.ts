@@ -90,19 +90,33 @@ Deno.serve(async (request) => {
   const member = await memberResponse.json() as { roles?: string[]; user?: DiscordIdentity };
   const discordUser = member.user ?? {};
   const roleIds = Array.isArray(member.roles) ? member.roles : [];
-  let mappings: Array<{ product_id: string; discord_role_id: string }> = [];
+  const rolesResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
+    headers: { Authorization: `Bot ${discordBotToken}` },
+  });
+  if (!rolesResponse.ok) return response({ error: 'Discord-Rollen konnten nicht geladen werden.' }, 502);
+  const guildRoles = await rolesResponse.json() as Array<{ id: string; name: string }>;
+  const roleNames = [...new Set(guildRoles.filter((role) => roleIds.includes(role.id)).map((role) => role.name))];
+  let mappings: Array<{ product_id: string; grant: string }> = [];
   if (roleIds.length > 0) {
     const mappingResult = await adminClient
       .from('product_role_access')
       .select('product_id, discord_role_id')
       .in('discord_role_id', roleIds);
     if (mappingResult.error) return response({ error: 'Produktrollen konnten nicht geladen werden.' }, 500);
-    mappings = mappingResult.data ?? [];
+    mappings = (mappingResult.data ?? []).map((mapping) => ({ product_id: mapping.product_id, grant: mapping.discord_role_id }));
+  }
+  if (roleNames.length > 0) {
+    const nameMappingResult = await adminClient
+      .from('product_role_name_access')
+      .select('product_id, discord_role_name')
+      .in('discord_role_name', roleNames);
+    if (nameMappingResult.error) return response({ error: 'Produktrollen konnten nicht geladen werden.' }, 500);
+    mappings = [...mappings, ...(nameMappingResult.data ?? []).map((mapping) => ({ product_id: mapping.product_id, grant: mapping.discord_role_name }))];
   }
 
   const grants = new Map<string, string>();
   for (const mapping of mappings ?? []) {
-    if (!grants.has(mapping.product_id)) grants.set(mapping.product_id, mapping.discord_role_id);
+    if (!grants.has(mapping.product_id)) grants.set(mapping.product_id, mapping.grant);
   }
 
   const syncedAt = new Date().toISOString();
