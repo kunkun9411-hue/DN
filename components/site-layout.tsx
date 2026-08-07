@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowRight, Check, ChevronDown, Globe2, Menu, MessageCircle, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Globe2, Menu, MessageCircle, UserRound, X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 
 export function SiteHeader() {
@@ -27,9 +27,10 @@ export function SiteHeader() {
       {navItems.map((item) => <Link key={item.href} href={item.href} data-active={pathname === item.href || (item.href === '/metin2' && pathname.startsWith('/metin2'))} onClick={() => setOpen(false)}>{item.label}</Link>)}
     </nav>
     <div className="topbar-actions">
+      <Link className="portal-link" href="/login" onClick={() => setOpen(false)}><UserRound size={14} /> <span className="hidden sm:inline">Portal</span></Link>
       <div className="locale-switcher">
-        <button className="locale-trigger" onClick={() => setLanguageOpen((value) => !value)} aria-expanded={languageOpen} aria-label="Sprache wechseln"><Globe2 size={14} /> {locale === 'de' ? '🇩🇪 DE' : '🇬🇧 EN'} <ChevronDown size={12} /></button>
-        {languageOpen && <div className="locale-menu"><button onClick={() => { setLocale('de'); setLanguageOpen(false); }}>🇩🇪 Deutsch</button><button onClick={() => { setLocale('en'); setLanguageOpen(false); }}>🇬🇧 English</button></div>}
+        <button className="locale-trigger" onClick={() => setLanguageOpen((value) => !value)} aria-expanded={languageOpen} aria-label="Sprache wechseln"><Globe2 size={14} /> {locale === 'de' ? 'ðŸ‡©ðŸ‡ª DE' : 'ðŸ‡¬ðŸ‡§ EN'} <ChevronDown size={12} /></button>
+        {languageOpen && <div className="locale-menu"><button onClick={() => { setLocale('de'); setLanguageOpen(false); }}>ðŸ‡©ðŸ‡ª Deutsch</button><button onClick={() => { setLocale('en'); setLanguageOpen(false); }}>ðŸ‡¬ðŸ‡§ English</button></div>}
       </div>
       <a className="button-duo button-primary" href="https://discord.com/app" target="_blank" rel="noreferrer"><MessageCircle size={15} /> <span className="hidden sm:inline">{t('actions.discord')}</span></a>
       <button className="mobile-menu-button" onClick={() => setOpen((value) => !value)} aria-label={t('nav.menu')} aria-expanded={open}>{open ? <X size={18} /> : <Menu size={18} />}</button>
@@ -70,3 +71,4 @@ export function BackLink({ href = '/' }: { href?: string }) {
   const { t } = useI18n();
   return <Link href={href} className="inline-flex items-center gap-2 text-sm text-muted hover:text-amber"><ArrowRight size={14} className="rotate-180" /> {t('actions.back')}</Link>;
 }
+
