@@ -25,10 +25,14 @@ import {
   Users,
 } from 'lucide-react';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
+import { discordInviteUrl } from '@/lib/contact';
+import { products } from '@/lib/data/products';
 
 type PortalSystem = { slug: string; name: string; category: string; description: string; status: 'pending' | 'active' | 'paused' | 'revoked'; updatedAt: string };
 type PortalTicket = { id: string; subject: string; status: 'open' | 'in_progress' | 'waiting' | 'closed'; priority: 'normal' | 'high'; updatedAt: string };
 type AdminRequest = { userId: string; systemId: string; name: string; system: string; status: PortalSystem['status']; requestedAt: string; initials: string };
+type PortalProductAccess = { productId: string; grantedAt: string };
+type AdminRoleMapping = { productId: string; discordRoleId: string; label: string };
 
 type PortalShellProps = {
   eyebrow: string;
@@ -97,6 +101,39 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+    const redirectIfSignedIn = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (mounted && data.session) router.replace('/dashboard');
+    };
+    void redirectIfSignedIn();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted && session) router.replace('/dashboard');
+    });
+    return () => { mounted = false; listener.subscription.unsubscribe(); };
+  }, [router, supabase]);
+
+  async function continueWithDiscord() {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    if (!supabase) {
+      setMessage('Die Verbindung zum Portal-Backend fehlt noch. Sobald Supabase hinterlegt ist, funktioniert Discord-Login live.');
+      setBusy(false);
+      return;
+    }
+    const result = await supabase.auth.signInWithOAuth({
+      provider: 'discord',
+      options: { redirectTo: `${window.location.origin}/login` },
+    });
+    if (result.error) {
+      setError(result.error.message);
+      setBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -125,6 +162,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     </div>
     <div className="auth-card">
       <div className="auth-card-head"><span className="auth-card-icon"><LogIn size={18} /></span><div><p className="eyebrow">{mode === 'login' ? 'Willkommen zurück' : 'Neues Konto'}</p><h2>{mode === 'login' ? 'Einloggen' : 'Registrieren'}</h2></div></div>
+      <button className="button-duo button-discord portal-submit" type="button" onClick={() => void continueWithDiscord()} disabled={busy}><MessageSquareText size={16} /> {mode === 'login' ? 'Mit Discord einloggen' : 'Mit Discord registrieren'} <ArrowRight size={15} /></button>
+      <div className="auth-divider"><span>oder per E-Mail</span></div>
       <form onSubmit={submit} className="portal-form">
         {mode === 'register' && <label>Dein Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="z. B. Alex / Projektname" required /></label>}
         <label>E-Mail-Adresse<div className="input-with-icon"><Mail size={15} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="du@beispiel.de" required /></div></label>
@@ -134,7 +173,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         <button className="button-duo button-primary portal-submit" type="submit" disabled={busy}>{busy ? 'Einen Moment …' : mode === 'login' ? 'Zum Portal' : 'Konto anlegen'} <ArrowRight size={15} /></button>
       </form>
       <p className="auth-switch">{mode === 'login' ? 'Noch kein Konto?' : 'Schon registriert?'} <Link href={mode === 'login' ? '/registrieren' : '/login'}>{mode === 'login' ? 'Jetzt anfragen' : 'Einloggen'}</Link></p>
-      <p className="auth-note"><LockKeyhole size={13} /> Deine Zugangsdaten werden nicht an Discord weitergegeben.</p>
+      <p className="auth-note"><LockKeyhole size={13} /> Discord liefert uns nur dein Basisprofil. Rollen und Produktzugriffe prüfen wir serverseitig.</p>
     </div>
   </div>;
 }
@@ -153,6 +192,9 @@ export function CustomerDashboard() {
   const [systems, setSystems] = useState<PortalSystem[]>([]);
   const [tickets, setTickets] = useState<PortalTicket[]>([]);
   const [displayName, setDisplayName] = useState('Projekt Nordwind');
+  const [discordName, setDiscordName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [productAccess, setProductAccess] = useState<PortalProductAccess[]>([]);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState('');
 
@@ -163,20 +205,27 @@ export function CustomerDashboard() {
     async function load() {
       const { data: userData } = await client.auth.getUser();
       if (!userData.user) { router.replace('/login'); return; }
-      const [profileResult, systemsResult, ticketsResult] = await Promise.all([
-        client.from('profiles').select('display_name').eq('id', userData.user.id).single(),
+      await client.functions.invoke('sync-discord-access');
+      const [profileResult, systemsResult, ticketsResult, productResult] = await Promise.all([
+        client.from('profiles').select('display_name, discord_username, discord_global_name, discord_avatar_url').eq('id', userData.user.id).single(),
         client.from('user_systems').select('status, updated_at, systems(slug, name, category, description)').eq('user_id', userData.user.id),
         client.from('tickets').select('id, subject, status, priority, updated_at').eq('user_id', userData.user.id).order('updated_at', { ascending: false }).limit(5),
+        client.from('user_product_access').select('product_id, granted_at').eq('user_id', userData.user.id).order('granted_at', { ascending: false }),
       ]);
       if (!mounted) return;
       if (profileResult.error && profileResult.error.code !== 'PGRST116') setAuthError(profileResult.error.message);
-      if (profileResult.data?.display_name) setDisplayName(profileResult.data.display_name);
+      if (profileResult.data?.display_name) setDisplayName(profileResult.data.discord_global_name || profileResult.data.discord_username || profileResult.data.display_name);
+      if (profileResult.data?.discord_global_name || profileResult.data?.discord_username) setDiscordName(profileResult.data.discord_global_name || profileResult.data.discord_username || '');
+      if (profileResult.data?.discord_avatar_url) setAvatarUrl(profileResult.data.discord_avatar_url);
       if (!systemsResult.error && systemsResult.data) {
         const rows = systemsResult.data as unknown as Array<{ status: PortalSystem['status']; updated_at: string; systems: Omit<PortalSystem, 'status' | 'updatedAt'> | null }>;
         setSystems(rows.filter((row) => row.systems).map((row) => ({ ...row.systems!, status: row.status, updatedAt: new Date(row.updated_at).toLocaleDateString('de-DE') })));
       }
       if (!ticketsResult.error && ticketsResult.data) {
         setTickets((ticketsResult.data as unknown as Array<{ id: string; subject: string; status: PortalTicket['status']; priority: PortalTicket['priority']; updated_at: string }>).map((ticket) => ({ ...ticket, updatedAt: new Date(ticket.updated_at).toLocaleDateString('de-DE') })));
+      }
+      if (!productResult.error && productResult.data) {
+        setProductAccess((productResult.data as unknown as Array<{ product_id: string; granted_at: string }>).map((item) => ({ productId: item.product_id, grantedAt: new Date(item.granted_at).toLocaleDateString('de-DE') })));
       }
       setLoading(false);
     }
@@ -196,12 +245,13 @@ export function CustomerDashboard() {
   return <PortalShell eyebrow="Kundenbereich" title={`Moin, ${displayName}.`} description="Hier siehst du, was gerade läuft, welche Systeme freigegeben sind und wo wir als Nächstes ansetzen." active="overview">
     {!isSupabaseConfigured && <SetupNotice />}
     {authError && <p className="form-message form-error">Backend-Antwort: {authError}</p>}
-    <div className="portal-toolbar"><div><span className="portal-kicker">Projektübersicht</span><p>Zuletzt synchronisiert vor wenigen Augenblicken</p></div><div className="portal-toolbar-actions"><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
+    <div className="portal-toolbar"><div className="portal-user-chip">{avatarUrl ? <img src={avatarUrl} alt="" /> : <CircleUserRound size={17} />}<span><strong>{discordName || displayName}</strong><small>{discordName ? 'Discord verbunden' : 'Portal-Konto'}</small></span></div><div className="portal-toolbar-actions"><a className="button-duo button-ghost" href={discordInviteUrl} target="_blank" rel="noreferrer">Discord-Server <ExternalLink size={14} /></a><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
     <div className="portal-metrics"><Metric label="Aktive Systeme" value={`${activeSystems}`} note="für dein Team verfügbar" icon={<Boxes size={17} />} /><Metric label="Offene Tickets" value={`${tickets.filter((ticket) => ticket.status !== 'closed').length}`} note="mit aktuellem Verlauf" icon={<Ticket size={17} />} /><Metric label="Support-Status" value="Bereit" note="direkter Ansprechpartner" icon={<MessageSquareText size={17} />} /></div>
     <div className="portal-section-grid">
       <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Systeme</span><h2>Deine Freigaben</h2></div><Link className="text-link" href="/dashboard/systeme">Alle ansehen <ArrowRight size={14} /></Link></div><div className="portal-list">{systems.map((system) => <div className="portal-list-row" key={system.slug}><span className="portal-row-icon"><Boxes size={16} /></span><div><strong>{system.name}</strong><small>{system.category} · {system.updatedAt}</small></div><StatusPill status={system.status} /><ChevronRight size={15} className="row-chevron" /></div>)}</div></section>
       <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Kommunikation</span><h2>Letzte Tickets</h2></div><Link className="text-link" href="/dashboard/tickets">Verlauf <ArrowRight size={14} /></Link></div><div className="portal-list">{tickets.map((ticket) => <div className="portal-list-row" key={ticket.id}><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} · {ticket.updatedAt}</small></div><StatusPill status={ticket.status} /></div>)}</div></section>
     </div>
+    <section className="portal-panel portal-products-panel"><div className="panel-heading"><div><span className="portal-kicker">Discord-Zugriffe</span><h2>Deine freigeschalteten Produkte</h2></div><BadgeCheck size={19} /></div>{productAccess.length > 0 ? <div className="portal-product-list">{productAccess.map((access) => { const product = products.find((item) => item.id === access.productId); return <div className="portal-product-row" key={access.productId}><span className="portal-row-icon"><KeyRound size={16} /></span><div><strong>{product?.title || access.productId}</strong><small>Freigeschaltet am {access.grantedAt} · Discord-Rolle</small></div><Link className="text-link" href={`/shop/${access.productId}`}>Ansehen <ArrowRight size={14} /></Link></div>; })}</div> : <div className="portal-empty-row"><KeyRound size={18} /><span>Noch keine Produkte freigeschaltet. Wir ordnen deine Discord-Rolle nach der Synchronisierung automatisch zu.</span><a className="text-link" href={discordInviteUrl} target="_blank" rel="noreferrer">Server öffnen <ExternalLink size={14} /></a></div>}</section>
     <section className="portal-next-step"><div className="portal-next-icon"><Clock3 size={19} /></div><div><span className="portal-kicker">Nächster sinnvoller Schritt</span><h2>Wir halten dein Projekt in Bewegung.</h2><p>Wenn sich Anforderungen ändern oder du eine neue Idee hast, leg einfach ein Ticket an. Wir ordnen es ein, geben dir eine klare Einschätzung und melden uns mit dem nächsten konkreten Schritt.</p></div><Link className="button-duo button-ghost" href="/dashboard/tickets">Zum Support <ArrowRight size={15} /></Link></section>
     <div className="portal-bottom-actions"><button className="quiet-action" onClick={logout}><LogIn size={15} /> Abmelden</button><Link className="quiet-action" href="/datenschutz"><ExternalLink size={15} /> Datenschutz</Link></div>
   </PortalShell>;
@@ -238,20 +288,7 @@ export function TicketsDashboard() {
   async function createTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
-    if (!supabase) { setMessage('Das Ticket-Backend wird mit deinem Supabase-Projekt verbunden. Die Vorschau ist bereits vorbereitet.'); return; }
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) { router.push('/login'); return; }
-    const result = await supabase.from('tickets').insert({ user_id: userData.user.id, subject, description }).select('id, subject, status, priority, updated_at').single();
-    if (result.error) setMessage(result.error.message);
-    else if (result.data) { setTickets((current) => [{ id: result.data.id, subject: result.data.subject, status: result.data.status, priority: result.data.priority, updatedAt: 'gerade eben' }, ...current]); setSubject(''); setDescription(''); setMessage('Ticket angelegt. Wir melden uns, sobald wir es eingeordnet haben.'); }
-  }
-
-  if (!supabase) return <PortalUnavailable area="Support" />;
-  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Tickets werden geladen …</div></main>;
-  return <PortalShell eyebrow="Kundenbereich / Support" title="Tickets, die weiterhelfen." description="Kurze Wege, klare Antworten und ein sauberer Verlauf für alles, was in deinem Projekt ansteht." active="tickets">
-    {!isSupabaseConfigured && <SetupNotice />}
-    <div className="portal-toolbar"><div><span className="portal-kicker">Support-Verlauf</span><p>Jede Anfrage bleibt nachvollziehbar an einem Ort.</p></div><span className="portal-live-state"><span /> Support erreichbar</span></div>
-    <div className="ticket-layout"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Aktivitäten</span><h2>Deine Tickets</h2></div><span className="panel-count">{tickets.length}</span></div><div className="portal-list">{tickets.map((ticket) => <div className="ticket-row" key={ticket.id}><div className="ticket-row-main"><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} · aktualisiert {ticket.updatedAt}</small></div></div><div className="ticket-row-meta"><span className={`priority priority-${ticket.priority}`}>{ticket.priority === 'high' ? 'Priorität' : 'Standard'}</span><StatusPill status={ticket.status} /><MoreHorizontal size={16} /></div></div>)}</div></section><section className="portal-panel ticket-create"><div className="panel-heading"><div><span className="portal-kicker">Neue Anfrage</span><h2>Was möchtest du klären?</h2></div><MessageSquareText size={19} /></div><form className="portal-form" onSubmit={createTicket}><label>Betreff<input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Worum geht es?" required /></label><label>Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Was sollen wir wissen?" rows={5} required /></label>{message && <p className="form-message form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
+    if (!supabase) { setMessage('Das T…666 tokens truncated…ht es?" required /></label><label>Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Was sollen wir wissen?" rows={5} required /></label>{message && <p className="form-message form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
   </PortalShell>;
 }
 
@@ -320,11 +357,16 @@ export function AdminDashboardLive() {
   const router = useRouter();
   const [members, setMembers] = useState<Array<{ name: string; email: string; role: string; status: string; initials: string }>>([]);
   const [requests, setRequests] = useState<AdminRequest[]>([]);
+  const [roleMappings, setRoleMappings] = useState<AdminRoleMapping[]>([]);
   const [role, setRole] = useState<'admin' | 'support' | null>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState('');
+  const [mappingBusy, setMappingBusy] = useState(false);
+  const [mappingProductId, setMappingProductId] = useState(products[0]?.id ?? '');
+  const [mappingRoleId, setMappingRoleId] = useState('');
+  const [mappingLabel, setMappingLabel] = useState('');
 
   useEffect(() => {
     if (!supabase) return;
@@ -336,9 +378,10 @@ export function AdminDashboardLive() {
       const profile = await client.from('profiles').select('role').eq('id', userData.user.id).single();
       if (profile.error || (profile.data?.role !== 'admin' && profile.data?.role !== 'support')) { router.replace('/dashboard'); return; }
       setRole(profile.data.role);
-      const [membersResult, requestResult] = await Promise.all([
+      const [membersResult, requestResult, mappingResult] = await Promise.all([
         client.from('profiles').select('id, display_name, role, created_at').order('created_at', { ascending: false }).limit(25),
         client.from('user_systems').select('user_id, system_id, status, updated_at, profiles(display_name), systems(name)').in('status', ['pending', 'active']).order('updated_at', { ascending: false }).limit(25),
+        client.from('product_role_access').select('product_id, discord_role_id, label').order('created_at', { ascending: false }),
       ]);
       if (!mounted) return;
       if (membersResult.error) setError(membersResult.error.message);
@@ -348,6 +391,8 @@ export function AdminDashboardLive() {
         const rows = requestResult.data as unknown as Array<{ user_id: string; system_id: string; status: AdminRequest['status']; updated_at: string; profiles: { display_name: string } | null; systems: { name: string } | null }>;
         setRequests(rows.filter((row) => row.profiles && row.systems).map((row) => ({ userId: row.user_id, systemId: row.system_id, status: row.status, name: row.profiles!.display_name || 'Ohne Namen', system: row.systems!.name, requestedAt: new Date(row.updated_at).toLocaleDateString('de-DE'), initials: (row.profiles!.display_name || 'DN').slice(0, 2).toUpperCase() })));
       }
+      if (mappingResult.error) setError(mappingResult.error.message);
+      else if (mappingResult.data) setRoleMappings((mappingResult.data as unknown as Array<{ product_id: string; discord_role_id: string; label: string }>).map((mapping) => ({ productId: mapping.product_id, discordRoleId: mapping.discord_role_id, label: mapping.label })));
       setLoading(false);
     }
     void loadAdmin();
@@ -370,6 +415,32 @@ export function AdminDashboardLive() {
     setBusyKey('');
   }
 
+  async function addRoleMapping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || role !== 'admin' || !mappingRoleId.trim()) return;
+    setMappingBusy(true);
+    setError('');
+    const label = mappingLabel.trim() || products.find((product) => product.id === mappingProductId)?.title || mappingProductId;
+    const result = await supabase.from('product_role_access').insert({ product_id: mappingProductId, discord_role_id: mappingRoleId.trim(), label }).select('product_id, discord_role_id, label').single();
+    if (result.error) setError(result.error.message);
+    else if (result.data) {
+      setRoleMappings((current) => [{ productId: result.data.product_id, discordRoleId: result.data.discord_role_id, label: result.data.label }, ...current]);
+      setMappingRoleId('');
+      setMappingLabel('');
+      setMessage('Discord-Rolle mit Produkt verknüpft. Beim nächsten Login wird der Zugriff synchronisiert.');
+    }
+    setMappingBusy(false);
+  }
+
+  async function removeRoleMapping(mapping: AdminRoleMapping) {
+    if (!supabase || role !== 'admin') return;
+    setMappingBusy(true);
+    const result = await supabase.from('product_role_access').delete().eq('product_id', mapping.productId).eq('discord_role_id', mapping.discordRoleId);
+    if (result.error) setError(result.error.message);
+    else setRoleMappings((current) => current.filter((item) => item.productId !== mapping.productId || item.discordRoleId !== mapping.discordRoleId));
+    setMappingBusy(false);
+  }
+
   async function signOut() { if (supabase) await supabase.auth.signOut(); router.push('/login'); }
   if (!supabase) return <PortalUnavailable area="Administration" />;
   if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Berechtigungen werden geprüft …</div></main>;
@@ -380,6 +451,7 @@ export function AdminDashboardLive() {
     {message && <p className="form-message form-info">{message}</p>}
     <div className="portal-metrics"><Metric label="Kundenkonten" value={`${members.length}`} note="im Arbeitsbereich" icon={<Users size={17} />} /><Metric label="Offene Freigaben" value={`${pendingCount}`} note="warten auf Prüfung" icon={<BadgeCheck size={17} />} /><Metric label="Deine Rolle" value={role === 'admin' ? 'Admin' : 'Support'} note={role === 'admin' ? 'Freigaben möglich' : 'Lesender Zugriff'} icon={<ShieldCheck size={17} />} /></div>
     <div className="portal-section-grid"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Zugriffsanfragen</span><h2>Freigaben prüfen</h2></div><Link className="text-link" href="/dashboard/systeme">Systeme <ArrowRight size={14} /></Link></div><div className="portal-list">{requests.length > 0 ? requests.map((request) => { const busy = busyKey === `${request.userId}-${request.systemId}`; const active = request.status === 'active'; return <div className="portal-list-row" key={`${request.userId}-${request.systemId}`}><span className="avatar-small">{request.initials}</span><div><strong>{request.name}</strong><small>{request.system} · {request.requestedAt}</small></div><StatusPill status={request.status} /><button className="mini-action" disabled={role !== 'admin' || busy} onClick={() => void updateRequest(request)}>{busy ? 'Speichern …' : role !== 'admin' ? 'Nur Admin' : active ? 'Entziehen' : 'Freigeben'}</button></div>; }) : <div className="portal-empty-row"><BadgeCheck size={18} /><span>Keine offenen oder aktiven Freigaben.</span></div>}</div></section><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Konten</span><h2>Team & Kunden</h2></div><Users size={18} /></div><div className="portal-list">{members.map((member) => <div className="portal-list-row" key={member.email}><span className="avatar-small">{member.initials}</span><div><strong>{member.name}</strong><small>Account-ID: {member.email}</small></div><span className="member-role">{member.role}</span><span className="member-state">{member.status}</span></div>)}</div></section></div>
+    <section className="portal-panel portal-role-mappings"><div className="panel-heading"><div><span className="portal-kicker">Discord-Rollen</span><h2>Produkte nach Rolle vergeben</h2></div><KeyRound size={19} /></div><p className="mapping-help">Verknüpfe eine Discord-Rollen-ID mit einem Shop-Produkt. Bei der nächsten Synchronisierung wird der Zugriff automatisch erteilt oder entfernt.</p><div className="portal-role-list">{roleMappings.length > 0 ? roleMappings.map((mapping) => <div className="portal-role-row" key={`${mapping.productId}-${mapping.discordRoleId}`}><div><strong>{mapping.label}</strong><small>{mapping.productId} · Rolle {mapping.discordRoleId}</small></div><button className="mini-action" disabled={role !== 'admin' || mappingBusy} onClick={() => void removeRoleMapping(mapping)}>Entfernen</button></div>) : <div className="portal-empty-row"><KeyRound size={18} /><span>Noch keine Produktrollen hinterlegt.</span></div>}</div>{role === 'admin' && <form className="portal-role-form" onSubmit={(event) => void addRoleMapping(event)}><select value={mappingProductId} onChange={(event) => setMappingProductId(event.target.value)} aria-label="Produkt auswählen">{products.map((product) => <option value={product.id} key={product.id}>{product.title}</option>)}</select><input value={mappingRoleId} onChange={(event) => setMappingRoleId(event.target.value)} placeholder="Discord Rollen-ID" required /><input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} placeholder="Label (optional)" /><button className="button-duo button-primary" type="submit" disabled={mappingBusy}>{mappingBusy ? 'Speichern …' : 'Rolle verknüpfen'} <ArrowRight size={14} /></button></form>}</section>
     <div className="portal-bottom-actions"><button className="quiet-action" onClick={signOut}><LogIn size={15} /> Abmelden</button><span className="quiet-action"><ShieldCheck size={15} /> Aktionen werden protokolliert</span></div>
   </PortalShell>;
 }
