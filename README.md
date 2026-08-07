@@ -40,12 +40,12 @@ DISCORD_GUILD_ID=1535241328198418574
 DISCORD_BOT_TOKEN=            # secret; never commit this
 ```
 
-The bot must be a member of the Duo Nerds Service server and have permission to view members. Product access is configured by Discord role IDs in `product_role_access`, for example:
+The bot must be a member of the Duo Nerds Service server and have permission to view members. Product access is configured by exact Discord role names in `product_role_name_access`. The current server roles include `Owner`, `Admin`, `Mod`, `Support`, `Product Author`, `Giveaways`, `Member` and `Events`. The admin panel provides these names as suggestions, for example:
 
 ```sql
-insert into public.product_role_access (product_id, discord_role_id, label)
-values ('metin2-ui-check', 'DISCORD_ROLE_ID', 'Metin2 UI Check')
-on conflict (product_id, discord_role_id) do nothing;
+insert into public.product_role_name_access (product_id, discord_role_name, label)
+values ('metin2-ui-check', 'Product Author', 'Metin2 UI Check')
+on conflict (product_id, discord_role_name) do nothing;
 ```
 
 After login, the function reads the member's roles, refreshes `user_product_access`, and the portal shows the products available to that Discord account. The invite link for onboarding is `https://discord.gg/225zd5PS9y`.
