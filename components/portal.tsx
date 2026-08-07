@@ -32,7 +32,9 @@ type PortalSystem = { slug: string; name: string; category: string; description:
 type PortalTicket = { id: string; subject: string; status: 'open' | 'in_progress' | 'waiting' | 'closed'; priority: 'normal' | 'high'; updatedAt: string };
 type AdminRequest = { userId: string; systemId: string; name: string; system: string; status: PortalSystem['status']; requestedAt: string; initials: string };
 type PortalProductAccess = { productId: string; grantedAt: string };
-type AdminRoleMapping = { productId: string; discordRoleId: string; label: string };
+type AdminRoleMapping = { productId: string; discordRoleName: string; label: string };
+
+const discordRoleNames = ['Owner', 'Admin', 'Mod', 'Support', 'Product Author', 'Giveaways', 'Member', 'Events', 'Bot'];
 
 type PortalShellProps = {
   eyebrow: string;
@@ -104,16 +106,23 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   useEffect(() => {
     if (!supabase) return;
     let mounted = true;
-    const redirectIfSignedIn = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (mounted && data.session) router.replace('/dashboard');
+    let handled = false;
+    const handleSession = (session: { user: unknown } | null) => {
+      if (!mounted || !session || handled) return;
+      handled = true;
+      if (mode === 'register' && window.sessionStorage.getItem('duonerds_discord_registration') === '1') {
+        window.sessionStorage.removeItem('duonerds_discord_registration');
+        window.location.assign(discordInviteUrl);
+        return;
+      }
+      router.replace('/dashboard');
     };
-    void redirectIfSignedIn();
+    void supabase.auth.getSession().then(({ data }) => handleSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted && session) router.replace('/dashboard');
+      handleSession(session);
     });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
-  }, [router, supabase]);
+  }, [mode, router, supabase]);
 
   async function continueWithDiscord() {
     setBusy(true);
@@ -124,9 +133,10 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       setBusy(false);
       return;
     }
+    if (mode === 'register') window.sessionStorage.setItem('duonerds_discord_registration', '1');
     const result = await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      options: { redirectTo: `${window.location.origin}/login` },
+      options: { redirectTo: `${window.location.origin}/${mode === 'register' ? 'registrieren' : 'login'}` },
     });
     if (result.error) {
       setError(result.error.message);
@@ -174,6 +184,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       </form>
       <p className="auth-switch">{mode === 'login' ? 'Noch kein Konto?' : 'Schon registriert?'} <Link href={mode === 'login' ? '/registrieren' : '/login'}>{mode === 'login' ? 'Jetzt anfragen' : 'Einloggen'}</Link></p>
       <p className="auth-note"><LockKeyhole size={13} /> Discord liefert uns nur dein Basisprofil. Rollen und Produktzugriffe prüfen wir serverseitig.</p>
+      {mode === 'register' && <p className="auth-note"><MessageSquareText size={13} /> Nach der Registrierung geht es direkt zu unserem Discord-Server.</p>}
     </div>
   </div>;
 }
@@ -245,7 +256,7 @@ export function CustomerDashboard() {
   return <PortalShell eyebrow="Kundenbereich" title={`Moin, ${displayName}.`} description="Hier siehst du, was gerade läuft, welche Systeme freigegeben sind und wo wir als Nächstes ansetzen." active="overview">
     {!isSupabaseConfigured && <SetupNotice />}
     {authError && <p className="form-message form-error">Backend-Antwort: {authError}</p>}
-    <div className="portal-toolbar"><div className="portal-user-chip">{avatarUrl ? <img src={avatarUrl} alt="" /> : <CircleUserRound size={17} />}<span><strong>{discordName || displayName}</strong><small>{discordName ? 'Discord verbunden' : 'Portal-Konto'}</small></span></div><div className="portal-toolbar-actions"><a className="button-duo button-ghost" href={discordInviteUrl} target="_blank" rel="noreferrer">Discord-Server <ExternalLink size={14} /></a><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
+    <div className="portal-toolbar"><div className="portal-user-chip">{avatarUrl ? <span className="portal-user-avatar" role="img" aria-label="Discord Avatar" style={{ backgroundImage: `url(${avatarUrl})` }} /> : <CircleUserRound size={17} />}<span><strong>{discordName || displayName}</strong><small>{discordName ? 'Discord verbunden' : 'Portal-Konto'}</small></span></div><div className="portal-toolbar-actions"><a className="button-duo button-ghost" href={discordInviteUrl} target="_blank" rel="noreferrer">Discord-Server <ExternalLink size={14} /></a><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
     <div className="portal-metrics"><Metric label="Aktive Systeme" value={`${activeSystems}`} note="für dein Team verfügbar" icon={<Boxes size={17} />} /><Metric label="Offene Tickets" value={`${tickets.filter((ticket) => ticket.status !== 'closed').length}`} note="mit aktuellem Verlauf" icon={<Ticket size={17} />} /><Metric label="Support-Status" value="Bereit" note="direkter Ansprechpartner" icon={<MessageSquareText size={17} />} /></div>
     <div className="portal-section-grid">
       <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Systeme</span><h2>Deine Freigaben</h2></div><Link className="text-link" href="/dashboard/systeme">Alle ansehen <ArrowRight size={14} /></Link></div><div className="portal-list">{systems.map((system) => <div className="portal-list-row" key={system.slug}><span className="portal-row-icon"><Boxes size={16} /></span><div><strong>{system.name}</strong><small>{system.category} · {system.updatedAt}</small></div><StatusPill status={system.status} /><ChevronRight size={15} className="row-chevron" /></div>)}</div></section>
@@ -273,22 +284,7 @@ export function TicketsDashboard() {
     async function loadTickets() {
       const { data: userData } = await client.auth.getUser();
       if (!userData.user) { router.replace('/login'); return; }
-      const result = await client.from('tickets').select('id, subject, status, priority, updated_at').eq('user_id', userData.user.id).order('updated_at', { ascending: false });
-      if (!mounted) return;
-      if (result.error) setMessage(result.error.message);
-      else if (result.data) {
-        setTickets((result.data as unknown as Array<{ id: string; subject: string; status: PortalTicket['status']; priority: PortalTicket['priority']; updated_at: string }>).map((ticket) => ({ ...ticket, updatedAt: new Date(ticket.updated_at).toLocaleDateString('de-DE') })));
-      }
-      setLoading(false);
-    }
-    void loadTickets();
-    return () => { mounted = false; };
-  }, [router, supabase]);
-
-  async function createTicket(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage('');
-    if (!supabase) { setMessage('Das T…666 tokens truncated…ht es?" required /></label><label>Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Was sollen wir wissen?" rows={5} required /></label>{message && <p className="form-message form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
+      const …934 tokens truncated…sage form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
   </PortalShell>;
 }
 
@@ -365,7 +361,7 @@ export function AdminDashboardLive() {
   const [busyKey, setBusyKey] = useState('');
   const [mappingBusy, setMappingBusy] = useState(false);
   const [mappingProductId, setMappingProductId] = useState(products[0]?.id ?? '');
-  const [mappingRoleId, setMappingRoleId] = useState('');
+  const [mappingRoleName, setMappingRoleName] = useState('');
   const [mappingLabel, setMappingLabel] = useState('');
 
   useEffect(() => {
@@ -381,7 +377,7 @@ export function AdminDashboardLive() {
       const [membersResult, requestResult, mappingResult] = await Promise.all([
         client.from('profiles').select('id, display_name, role, created_at').order('created_at', { ascending: false }).limit(25),
         client.from('user_systems').select('user_id, system_id, status, updated_at, profiles(display_name), systems(name)').in('status', ['pending', 'active']).order('updated_at', { ascending: false }).limit(25),
-        client.from('product_role_access').select('product_id, discord_role_id, label').order('created_at', { ascending: false }),
+        client.from('product_role_name_access').select('product_id, discord_role_name, label').order('created_at', { ascending: false }),
       ]);
       if (!mounted) return;
       if (membersResult.error) setError(membersResult.error.message);
@@ -392,7 +388,7 @@ export function AdminDashboardLive() {
         setRequests(rows.filter((row) => row.profiles && row.systems).map((row) => ({ userId: row.user_id, systemId: row.system_id, status: row.status, name: row.profiles!.display_name || 'Ohne Namen', system: row.systems!.name, requestedAt: new Date(row.updated_at).toLocaleDateString('de-DE'), initials: (row.profiles!.display_name || 'DN').slice(0, 2).toUpperCase() })));
       }
       if (mappingResult.error) setError(mappingResult.error.message);
-      else if (mappingResult.data) setRoleMappings((mappingResult.data as unknown as Array<{ product_id: string; discord_role_id: string; label: string }>).map((mapping) => ({ productId: mapping.product_id, discordRoleId: mapping.discord_role_id, label: mapping.label })));
+      else if (mappingResult.data) setRoleMappings((mappingResult.data as unknown as Array<{ product_id: string; discord_role_name: string; label: string }>).map((mapping) => ({ productId: mapping.product_id, discordRoleName: mapping.discord_role_name, label: mapping.label })));
       setLoading(false);
     }
     void loadAdmin();
@@ -417,15 +413,15 @@ export function AdminDashboardLive() {
 
   async function addRoleMapping(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!supabase || role !== 'admin' || !mappingRoleId.trim()) return;
+    if (!supabase || role !== 'admin' || !mappingRoleName.trim()) return;
     setMappingBusy(true);
     setError('');
     const label = mappingLabel.trim() || products.find((product) => product.id === mappingProductId)?.title || mappingProductId;
-    const result = await supabase.from('product_role_access').insert({ product_id: mappingProductId, discord_role_id: mappingRoleId.trim(), label }).select('product_id, discord_role_id, label').single();
+    const result = await supabase.from('product_role_name_access').insert({ product_id: mappingProductId, discord_role_name: mappingRoleName.trim(), label }).select('product_id, discord_role_name, label').single();
     if (result.error) setError(result.error.message);
     else if (result.data) {
-      setRoleMappings((current) => [{ productId: result.data.product_id, discordRoleId: result.data.discord_role_id, label: result.data.label }, ...current]);
-      setMappingRoleId('');
+      setRoleMappings((current) => [{ productId: result.data.product_id, discordRoleName: result.data.discord_role_name, label: result.data.label }, ...current]);
+      setMappingRoleName('');
       setMappingLabel('');
       setMessage('Discord-Rolle mit Produkt verknüpft. Beim nächsten Login wird der Zugriff synchronisiert.');
     }
@@ -435,9 +431,9 @@ export function AdminDashboardLive() {
   async function removeRoleMapping(mapping: AdminRoleMapping) {
     if (!supabase || role !== 'admin') return;
     setMappingBusy(true);
-    const result = await supabase.from('product_role_access').delete().eq('product_id', mapping.productId).eq('discord_role_id', mapping.discordRoleId);
+    const result = await supabase.from('product_role_name_access').delete().eq('product_id', mapping.productId).eq('discord_role_name', mapping.discordRoleName);
     if (result.error) setError(result.error.message);
-    else setRoleMappings((current) => current.filter((item) => item.productId !== mapping.productId || item.discordRoleId !== mapping.discordRoleId));
+    else setRoleMappings((current) => current.filter((item) => item.productId !== mapping.productId || item.discordRoleName !== mapping.discordRoleName));
     setMappingBusy(false);
   }
 
@@ -451,7 +447,7 @@ export function AdminDashboardLive() {
     {message && <p className="form-message form-info">{message}</p>}
     <div className="portal-metrics"><Metric label="Kundenkonten" value={`${members.length}`} note="im Arbeitsbereich" icon={<Users size={17} />} /><Metric label="Offene Freigaben" value={`${pendingCount}`} note="warten auf Prüfung" icon={<BadgeCheck size={17} />} /><Metric label="Deine Rolle" value={role === 'admin' ? 'Admin' : 'Support'} note={role === 'admin' ? 'Freigaben möglich' : 'Lesender Zugriff'} icon={<ShieldCheck size={17} />} /></div>
     <div className="portal-section-grid"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Zugriffsanfragen</span><h2>Freigaben prüfen</h2></div><Link className="text-link" href="/dashboard/systeme">Systeme <ArrowRight size={14} /></Link></div><div className="portal-list">{requests.length > 0 ? requests.map((request) => { const busy = busyKey === `${request.userId}-${request.systemId}`; const active = request.status === 'active'; return <div className="portal-list-row" key={`${request.userId}-${request.systemId}`}><span className="avatar-small">{request.initials}</span><div><strong>{request.name}</strong><small>{request.system} · {request.requestedAt}</small></div><StatusPill status={request.status} /><button className="mini-action" disabled={role !== 'admin' || busy} onClick={() => void updateRequest(request)}>{busy ? 'Speichern …' : role !== 'admin' ? 'Nur Admin' : active ? 'Entziehen' : 'Freigeben'}</button></div>; }) : <div className="portal-empty-row"><BadgeCheck size={18} /><span>Keine offenen oder aktiven Freigaben.</span></div>}</div></section><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Konten</span><h2>Team & Kunden</h2></div><Users size={18} /></div><div className="portal-list">{members.map((member) => <div className="portal-list-row" key={member.email}><span className="avatar-small">{member.initials}</span><div><strong>{member.name}</strong><small>Account-ID: {member.email}</small></div><span className="member-role">{member.role}</span><span className="member-state">{member.status}</span></div>)}</div></section></div>
-    <section className="portal-panel portal-role-mappings"><div className="panel-heading"><div><span className="portal-kicker">Discord-Rollen</span><h2>Produkte nach Rolle vergeben</h2></div><KeyRound size={19} /></div><p className="mapping-help">Verknüpfe eine Discord-Rollen-ID mit einem Shop-Produkt. Bei der nächsten Synchronisierung wird der Zugriff automatisch erteilt oder entfernt.</p><div className="portal-role-list">{roleMappings.length > 0 ? roleMappings.map((mapping) => <div className="portal-role-row" key={`${mapping.productId}-${mapping.discordRoleId}`}><div><strong>{mapping.label}</strong><small>{mapping.productId} · Rolle {mapping.discordRoleId}</small></div><button className="mini-action" disabled={role !== 'admin' || mappingBusy} onClick={() => void removeRoleMapping(mapping)}>Entfernen</button></div>) : <div className="portal-empty-row"><KeyRound size={18} /><span>Noch keine Produktrollen hinterlegt.</span></div>}</div>{role === 'admin' && <form className="portal-role-form" onSubmit={(event) => void addRoleMapping(event)}><select value={mappingProductId} onChange={(event) => setMappingProductId(event.target.value)} aria-label="Produkt auswählen">{products.map((product) => <option value={product.id} key={product.id}>{product.title}</option>)}</select><input value={mappingRoleId} onChange={(event) => setMappingRoleId(event.target.value)} placeholder="Discord Rollen-ID" required /><input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} placeholder="Label (optional)" /><button className="button-duo button-primary" type="submit" disabled={mappingBusy}>{mappingBusy ? 'Speichern …' : 'Rolle verknüpfen'} <ArrowRight size={14} /></button></form>}</section>
+    <section className="portal-panel portal-role-mappings"><div className="panel-heading"><div><span className="portal-kicker">Discord-Rollen</span><h2>Produkte nach Rolle vergeben</h2></div><KeyRound size={19} /></div><p className="mapping-help">Verknüpfe den exakten Discord-Rollennamen mit einem Shop-Produkt. Beim nächsten Login liest der Server die Rollen und synchronisiert den Zugriff automatisch.</p><div className="portal-role-list">{roleMappings.length > 0 ? roleMappings.map((mapping) => <div className="portal-role-row" key={`${mapping.productId}-${mapping.discordRoleName}`}><div><strong>{mapping.label}</strong><small>{mapping.productId} · Rolle {mapping.discordRoleName}</small></div><button className="mini-action" disabled={role !== 'admin' || mappingBusy} onClick={() => void removeRoleMapping(mapping)}>Entfernen</button></div>) : <div className="portal-empty-row"><KeyRound size={18} /><span>Noch keine Produktrollen hinterlegt.</span></div>}</div>{role === 'admin' && <form className="portal-role-form" onSubmit={(event) => void addRoleMapping(event)}><select value={mappingProductId} onChange={(event) => setMappingProductId(event.target.value)} aria-label="Produkt auswählen">{products.map((product) => <option value={product.id} key={product.id}>{product.title}</option>)}</select><input list="duonerds-discord-roles" value={mappingRoleName} onChange={(event) => setMappingRoleName(event.target.value)} placeholder="Discord Rollenname" required /><datalist id="duonerds-discord-roles">{discordRoleNames.map((roleName) => <option value={roleName} key={roleName} />)}</datalist><input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} placeholder="Label (optional)" /><button className="button-duo button-primary" type="submit" disabled={mappingBusy}>{mappingBusy ? 'Speichern …' : 'Rolle verknüpfen'} <ArrowRight size={14} /></button></form>}</section>
     <div className="portal-bottom-actions"><button className="quiet-action" onClick={signOut}><LogIn size={15} /> Abmelden</button><span className="quiet-action"><ShieldCheck size={15} /> Aktionen werden protokolliert</span></div>
   </PortalShell>;
 }
