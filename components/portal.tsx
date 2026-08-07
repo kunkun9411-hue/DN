@@ -28,6 +28,7 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type PortalSystem = { slug: string; name: string; category: string; description: string; status: 'pending' | 'active' | 'paused' | 'revoked'; updatedAt: string };
 type PortalTicket = { id: string; subject: string; status: 'open' | 'in_progress' | 'waiting' | 'closed'; priority: 'normal' | 'high'; updatedAt: string };
+type AdminRequest = { userId: string; systemId: string; name: string; system: string; status: PortalSystem['status']; requestedAt: string; initials: string };
 
 type PortalShellProps = {
   eyebrow: string;
@@ -39,7 +40,7 @@ type PortalShellProps = {
 
 const statusLabels: Record<string, string> = {
   active: 'Aktiv',
-  pending: 'PrÃ¼fung lÃ¤uft',
+  pending: 'Prüfung läuft',
   paused: 'Pausiert',
   revoked: 'Entzogen',
   open: 'Offen',
@@ -56,13 +57,13 @@ export function PortalShell({ eyebrow, title, description, active = 'overview', 
         <h1>{title}</h1>
         <p className="portal-lead">{description}</p>
       </div>
-      <div className="portal-trust"><ShieldCheck size={17} /><span>GeschÃ¼tzter Bereich<br /><strong>Nur fÃ¼r dein Projekt</strong></span></div>
+      <div className="portal-trust"><ShieldCheck size={17} /><span>Geschützter Bereich<br /><strong>Nur für dein Projekt</strong></span></div>
     </div>
     <div className="portal-layout">
       <aside className="portal-sidebar">
         <div className="portal-sidebar-label">Arbeitsbereich</div>
         <nav className="portal-nav" aria-label="Portalnavigation">
-          <Link className={active === 'overview' ? 'active' : ''} href="/dashboard"><FolderKanban size={16} /> Ãœbersicht</Link>
+          <Link className={active === 'overview' ? 'active' : ''} href="/dashboard"><FolderKanban size={16} /> Übersicht</Link>
           <Link className={active === 'tickets' ? 'active' : ''} href="/dashboard/tickets"><Ticket size={16} /> Meine Tickets</Link>
           <Link className={active === 'systems' ? 'active' : ''} href="/dashboard/systeme"><Boxes size={16} /> Freigaben & Systeme</Link>
           <Link className={active === 'admin' ? 'active' : ''} href="/admin"><ShieldCheck size={16} /> Administration</Link>
@@ -77,13 +78,13 @@ export function PortalShell({ eyebrow, title, description, active = 'overview', 
 export function SetupNotice() {
   return <div className="portal-setup-notice">
     <div className="portal-setup-icon"><LockKeyhole size={18} /></div>
-    <div><strong>Portal-Backend wird eingerichtet</strong><p>Die OberflÃ¤che und die Rechte-Struktur stehen. FÃ¼r echte Konten wird noch das Supabase-Projekt verbunden â€“ bis dahin bleibt diese Vorschau sicher ohne Demo-Zugangsdaten.</p></div>
+    <div><strong>Portal-Backend wird eingerichtet</strong><p>Die Oberfläche und die Rechte-Struktur stehen. Für echte Konten wird noch das Supabase-Projekt verbunden – bis dahin bleibt diese Vorschau sicher ohne Demo-Zugangsdaten.</p></div>
     <Link className="text-link" href="/datenschutz">Datenschutz <ArrowRight size={14} /></Link>
   </div>;
 }
 
 export function PortalUnavailable({ area = 'Portal' }: { area?: string }) {
-  return <main className="portal-page container-wide"><div className="portal-locked"><span className="portal-locked-icon"><LockKeyhole size={22} /></span><span className="eyebrow">DuoNerds / {area}</span><h1>Dieser Bereich ist noch nicht Ã¶ffentlich freigeschaltet.</h1><p>Die Portal-OberflÃ¤che ist vorbereitet, aber noch nicht mit einem echten Backend verbunden. Deshalb zeigen wir hier bewusst keine Beispielkonten, Tickets oder internen Daten.</p><div className="hero-actions"><Link className="button-duo button-primary" href="/login">Zum Login <ArrowRight size={15} /></Link><Link className="button-duo button-ghost" href="/#kontakt">Frage stellen <MessageSquareText size={15} /></Link></div></div></main>;
+  return <main className="portal-page container-wide"><div className="portal-locked"><span className="portal-locked-icon"><LockKeyhole size={22} /></span><span className="eyebrow">DuoNerds / {area}</span><h1>Dieser Bereich ist noch nicht öffentlich freigeschaltet.</h1><p>Die Portal-Oberfläche ist vorbereitet, aber noch nicht mit einem echten Backend verbunden. Deshalb zeigen wir hier bewusst keine Beispielkonten, Tickets oder internen Daten.</p><div className="hero-actions"><Link className="button-duo button-primary" href="/login">Zum Login <ArrowRight size={15} /></Link><Link className="button-duo button-ghost" href="/#kontakt">Frage stellen <MessageSquareText size={15} /></Link></div></div></main>;
 }
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
@@ -102,7 +103,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     setError('');
     setMessage('');
     if (!supabase) {
-      setMessage('Die Verbindung zum Portal-Backend fehlt noch. Sobald der Supabase-SchlÃ¼ssel hinterlegt ist, funktioniert dieser Zugang live.');
+      setMessage('Die Verbindung zum Portal-Backend fehlt noch. Sobald der Supabase-Schlüssel hinterlegt ist, funktioniert dieser Zugang live.');
       setBusy(false);
       return;
     }
@@ -110,7 +111,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       ? await supabase.auth.signInWithPassword({ email, password })
       : await supabase.auth.signUp({ email, password, options: { data: { display_name: name } } });
     if (result.error) setError(result.error.message);
-    else if (mode === 'register' && !result.data.session) setMessage('Fast geschafft. Bitte bestÃ¤tige zuerst deine E-Mail-Adresse.');
+    else if (mode === 'register' && !result.data.session) setMessage('Fast geschafft. Bitte bestätige zuerst deine E-Mail-Adresse.');
     else router.push('/dashboard');
     setBusy(false);
   }
@@ -119,18 +120,18 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     <div className="auth-pitch">
       <p className="eyebrow"><KeyRound size={14} /> DuoNerds Portal</p>
       <h1>{mode === 'login' ? 'Alles zu deinem Projekt. An einem Ort.' : 'Dein Projektbereich startet hier.'}</h1>
-      <p className="portal-lead">Tickets, Freigaben, Dateien und nÃ¤chste Schritte â€“ sauber sortiert und nur fÃ¼r dich und dein Projektteam sichtbar.</p>
-      <div className="auth-proof-list"><span><CheckCircle2 size={16} /> Klare ProjektÃ¼bersicht</span><span><CheckCircle2 size={16} /> Direkter Support-Kanal</span><span><CheckCircle2 size={16} /> Freigaben nachvollziehbar verwaltet</span></div>
+      <p className="portal-lead">Tickets, Freigaben, Dateien und nächste Schritte – sauber sortiert und nur für dich und dein Projektteam sichtbar.</p>
+      <div className="auth-proof-list"><span><CheckCircle2 size={16} /> Klare Projektübersicht</span><span><CheckCircle2 size={16} /> Direkter Support-Kanal</span><span><CheckCircle2 size={16} /> Freigaben nachvollziehbar verwaltet</span></div>
     </div>
     <div className="auth-card">
-      <div className="auth-card-head"><span className="auth-card-icon"><LogIn size={18} /></span><div><p className="eyebrow">{mode === 'login' ? 'Willkommen zurÃ¼ck' : 'Neues Konto'}</p><h2>{mode === 'login' ? 'Einloggen' : 'Registrieren'}</h2></div></div>
+      <div className="auth-card-head"><span className="auth-card-icon"><LogIn size={18} /></span><div><p className="eyebrow">{mode === 'login' ? 'Willkommen zurück' : 'Neues Konto'}</p><h2>{mode === 'login' ? 'Einloggen' : 'Registrieren'}</h2></div></div>
       <form onSubmit={submit} className="portal-form">
         {mode === 'register' && <label>Dein Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="z. B. Alex / Projektname" required /></label>}
         <label>E-Mail-Adresse<div className="input-with-icon"><Mail size={15} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="du@beispiel.de" required /></div></label>
         <label>Passwort<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mindestens 8 Zeichen" minLength={8} required /></label>
         {error && <p className="form-message form-error">{error}</p>}
         {message && <p className="form-message form-info">{message}</p>}
-        <button className="button-duo button-primary portal-submit" type="submit" disabled={busy}>{busy ? 'Einen Moment â€¦' : mode === 'login' ? 'Zum Portal' : 'Konto anlegen'} <ArrowRight size={15} /></button>
+        <button className="button-duo button-primary portal-submit" type="submit" disabled={busy}>{busy ? 'Einen Moment …' : mode === 'login' ? 'Zum Portal' : 'Konto anlegen'} <ArrowRight size={15} /></button>
       </form>
       <p className="auth-switch">{mode === 'login' ? 'Noch kein Konto?' : 'Schon registriert?'} <Link href={mode === 'login' ? '/registrieren' : '/login'}>{mode === 'login' ? 'Jetzt anfragen' : 'Einloggen'}</Link></p>
       <p className="auth-note"><LockKeyhole size={13} /> Deine Zugangsdaten werden nicht an Discord weitergegeben.</p>
@@ -190,18 +191,18 @@ export function CustomerDashboard() {
 
   const activeSystems = useMemo(() => systems.filter((system) => system.status === 'active').length, [systems]);
   if (!supabase) return <PortalUnavailable area="Kundenbereich" />;
-  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Portal wird geladen â€¦</div></main>;
+  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Portal wird geladen …</div></main>;
 
-  return <PortalShell eyebrow="Kundenbereich" title={`Moin, ${displayName}.`} description="Hier siehst du, was gerade lÃ¤uft, welche Systeme freigegeben sind und wo wir als NÃ¤chstes ansetzen." active="overview">
+  return <PortalShell eyebrow="Kundenbereich" title={`Moin, ${displayName}.`} description="Hier siehst du, was gerade läuft, welche Systeme freigegeben sind und wo wir als Nächstes ansetzen." active="overview">
     {!isSupabaseConfigured && <SetupNotice />}
     {authError && <p className="form-message form-error">Backend-Antwort: {authError}</p>}
-    <div className="portal-toolbar"><div><span className="portal-kicker">ProjektÃ¼bersicht</span><p>Zuletzt synchronisiert vor wenigen Augenblicken</p></div><div className="portal-toolbar-actions"><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
-    <div className="portal-metrics"><Metric label="Aktive Systeme" value={`${activeSystems}`} note="fÃ¼r dein Team verfÃ¼gbar" icon={<Boxes size={17} />} /><Metric label="Offene Tickets" value={`${tickets.filter((ticket) => ticket.status !== 'closed').length}`} note="mit aktuellem Verlauf" icon={<Ticket size={17} />} /><Metric label="Support-Status" value="Bereit" note="direkter Ansprechpartner" icon={<MessageSquareText size={17} />} /></div>
+    <div className="portal-toolbar"><div><span className="portal-kicker">Projektübersicht</span><p>Zuletzt synchronisiert vor wenigen Augenblicken</p></div><div className="portal-toolbar-actions"><button className="button-duo button-ghost" onClick={logout}>Abmelden</button><Link className="button-duo button-primary" href="/dashboard/tickets">Ticket erstellen <Plus size={15} /></Link></div></div>
+    <div className="portal-metrics"><Metric label="Aktive Systeme" value={`${activeSystems}`} note="für dein Team verfügbar" icon={<Boxes size={17} />} /><Metric label="Offene Tickets" value={`${tickets.filter((ticket) => ticket.status !== 'closed').length}`} note="mit aktuellem Verlauf" icon={<Ticket size={17} />} /><Metric label="Support-Status" value="Bereit" note="direkter Ansprechpartner" icon={<MessageSquareText size={17} />} /></div>
     <div className="portal-section-grid">
-      <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Systeme</span><h2>Deine Freigaben</h2></div><Link className="text-link" href="/dashboard/systeme">Alle ansehen <ArrowRight size={14} /></Link></div><div className="portal-list">{systems.map((system) => <div className="portal-list-row" key={system.slug}><span className="portal-row-icon"><Boxes size={16} /></span><div><strong>{system.name}</strong><small>{system.category} Â· {system.updatedAt}</small></div><StatusPill status={system.status} /><ChevronRight size={15} className="row-chevron" /></div>)}</div></section>
-      <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Kommunikation</span><h2>Letzte Tickets</h2></div><Link className="text-link" href="/dashboard/tickets">Verlauf <ArrowRight size={14} /></Link></div><div className="portal-list">{tickets.map((ticket) => <div className="portal-list-row" key={ticket.id}><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} Â· {ticket.updatedAt}</small></div><StatusPill status={ticket.status} /></div>)}</div></section>
+      <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Systeme</span><h2>Deine Freigaben</h2></div><Link className="text-link" href="/dashboard/systeme">Alle ansehen <ArrowRight size={14} /></Link></div><div className="portal-list">{systems.map((system) => <div className="portal-list-row" key={system.slug}><span className="portal-row-icon"><Boxes size={16} /></span><div><strong>{system.name}</strong><small>{system.category} · {system.updatedAt}</small></div><StatusPill status={system.status} /><ChevronRight size={15} className="row-chevron" /></div>)}</div></section>
+      <section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Kommunikation</span><h2>Letzte Tickets</h2></div><Link className="text-link" href="/dashboard/tickets">Verlauf <ArrowRight size={14} /></Link></div><div className="portal-list">{tickets.map((ticket) => <div className="portal-list-row" key={ticket.id}><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} · {ticket.updatedAt}</small></div><StatusPill status={ticket.status} /></div>)}</div></section>
     </div>
-    <section className="portal-next-step"><div className="portal-next-icon"><Clock3 size={19} /></div><div><span className="portal-kicker">NÃ¤chster sinnvoller Schritt</span><h2>Wir halten dein Projekt in Bewegung.</h2><p>Wenn sich Anforderungen Ã¤ndern oder du eine neue Idee hast, leg einfach ein Ticket an. Wir ordnen es ein, geben dir eine klare EinschÃ¤tzung und melden uns mit dem nÃ¤chsten konkreten Schritt.</p></div><Link className="button-duo button-ghost" href="/dashboard/tickets">Zum Support <ArrowRight size={15} /></Link></section>
+    <section className="portal-next-step"><div className="portal-next-icon"><Clock3 size={19} /></div><div><span className="portal-kicker">Nächster sinnvoller Schritt</span><h2>Wir halten dein Projekt in Bewegung.</h2><p>Wenn sich Anforderungen ändern oder du eine neue Idee hast, leg einfach ein Ticket an. Wir ordnen es ein, geben dir eine klare Einschätzung und melden uns mit dem nächsten konkreten Schritt.</p></div><Link className="button-duo button-ghost" href="/dashboard/tickets">Zum Support <ArrowRight size={15} /></Link></section>
     <div className="portal-bottom-actions"><button className="quiet-action" onClick={logout}><LogIn size={15} /> Abmelden</button><Link className="quiet-action" href="/datenschutz"><ExternalLink size={15} /> Datenschutz</Link></div>
   </PortalShell>;
 }
@@ -213,6 +214,26 @@ export function TicketsDashboard() {
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(Boolean(supabase));
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let mounted = true;
+    async function loadTickets() {
+      const { data: userData } = await client.auth.getUser();
+      if (!userData.user) { router.replace('/login'); return; }
+      const result = await client.from('tickets').select('id, subject, status, priority, updated_at').eq('user_id', userData.user.id).order('updated_at', { ascending: false });
+      if (!mounted) return;
+      if (result.error) setMessage(result.error.message);
+      else if (result.data) {
+        setTickets((result.data as unknown as Array<{ id: string; subject: string; status: PortalTicket['status']; priority: PortalTicket['priority']; updated_at: string }>).map((ticket) => ({ ...ticket, updatedAt: new Date(ticket.updated_at).toLocaleDateString('de-DE') })));
+      }
+      setLoading(false);
+    }
+    void loadTickets();
+    return () => { mounted = false; };
+  }, [router, supabase]);
 
   async function createTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -226,22 +247,48 @@ export function TicketsDashboard() {
   }
 
   if (!supabase) return <PortalUnavailable area="Support" />;
-  return <PortalShell eyebrow="Kundenbereich / Support" title="Tickets, die weiterhelfen." description="Kurze Wege, klare Antworten und ein sauberer Verlauf fÃ¼r alles, was in deinem Projekt ansteht." active="tickets">
+  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Tickets werden geladen …</div></main>;
+  return <PortalShell eyebrow="Kundenbereich / Support" title="Tickets, die weiterhelfen." description="Kurze Wege, klare Antworten und ein sauberer Verlauf für alles, was in deinem Projekt ansteht." active="tickets">
     {!isSupabaseConfigured && <SetupNotice />}
     <div className="portal-toolbar"><div><span className="portal-kicker">Support-Verlauf</span><p>Jede Anfrage bleibt nachvollziehbar an einem Ort.</p></div><span className="portal-live-state"><span /> Support erreichbar</span></div>
-    <div className="ticket-layout"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">AktivitÃ¤ten</span><h2>Deine Tickets</h2></div><span className="panel-count">{tickets.length}</span></div><div className="portal-list">{tickets.map((ticket) => <div className="ticket-row" key={ticket.id}><div className="ticket-row-main"><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} Â· aktualisiert {ticket.updatedAt}</small></div></div><div className="ticket-row-meta"><span className={`priority priority-${ticket.priority}`}>{ticket.priority === 'high' ? 'PrioritÃ¤t' : 'Standard'}</span><StatusPill status={ticket.status} /><MoreHorizontal size={16} /></div></div>)}</div></section><section className="portal-panel ticket-create"><div className="panel-heading"><div><span className="portal-kicker">Neue Anfrage</span><h2>Was mÃ¶chtest du klÃ¤ren?</h2></div><MessageSquareText size={19} /></div><form className="portal-form" onSubmit={createTicket}><label>Betreff<input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Worum geht es?" required /></label><label>Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Was sollen wir wissen?" rows={5} required /></label>{message && <p className="form-message form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
+    <div className="ticket-layout"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Aktivitäten</span><h2>Deine Tickets</h2></div><span className="panel-count">{tickets.length}</span></div><div className="portal-list">{tickets.map((ticket) => <div className="ticket-row" key={ticket.id}><div className="ticket-row-main"><span className="portal-row-icon"><Ticket size={16} /></span><div><strong>{ticket.subject}</strong><small>{ticket.id} · aktualisiert {ticket.updatedAt}</small></div></div><div className="ticket-row-meta"><span className={`priority priority-${ticket.priority}`}>{ticket.priority === 'high' ? 'Priorität' : 'Standard'}</span><StatusPill status={ticket.status} /><MoreHorizontal size={16} /></div></div>)}</div></section><section className="portal-panel ticket-create"><div className="panel-heading"><div><span className="portal-kicker">Neue Anfrage</span><h2>Was möchtest du klären?</h2></div><MessageSquareText size={19} /></div><form className="portal-form" onSubmit={createTicket}><label>Betreff<input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Worum geht es?" required /></label><label>Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Was sollen wir wissen?" rows={5} required /></label>{message && <p className="form-message form-info">{message}</p>}<button className="button-duo button-primary portal-submit" type="submit">Anfrage senden <ArrowRight size={15} /></button></form></section></div>
   </PortalShell>;
 }
 
 export function SystemsDashboard() {
   const supabase = getSupabaseBrowserClient();
+  const router = useRouter();
   const [systems, setSystems] = useState<PortalSystem[]>([]);
-  useEffect(() => { if (!supabase) return; void supabase.auth.getUser().then(async ({ data }) => { if (!data.user) return; const result = await supabase.from('user_systems').select('status, updated_at, systems(slug, name, category, description)').eq('user_id', data.user.id); if (!result.error && result.data) { const rows = result.data as unknown as Array<{ status: PortalSystem['status']; updated_at: string; systems: Omit<PortalSystem, 'status' | 'updatedAt'> | null }>; setSystems(rows.filter((row) => row.systems).map((row) => ({ ...row.systems!, status: row.status, updatedAt: new Date(row.updated_at).toLocaleDateString('de-DE') }))); } }); }, [supabase]);
+  const [loading, setLoading] = useState(Boolean(supabase));
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let mounted = true;
+    async function loadSystems() {
+      const { data: userData } = await client.auth.getUser();
+      if (!userData.user) { router.replace('/login'); return; }
+      const result = await client.from('user_systems').select('status, updated_at, systems(slug, name, category, description)').eq('user_id', userData.user.id).order('updated_at', { ascending: false });
+      if (!mounted) return;
+      if (result.error) setError(result.error.message);
+      else if (result.data) {
+        const rows = result.data as unknown as Array<{ status: PortalSystem['status']; updated_at: string; systems: Omit<PortalSystem, 'status' | 'updatedAt'> | null }>;
+        setSystems(rows.filter((row) => row.systems).map((row) => ({ ...row.systems!, status: row.status, updatedAt: new Date(row.updated_at).toLocaleDateString('de-DE') })));
+      }
+      setLoading(false);
+    }
+    void loadSystems();
+    return () => { mounted = false; };
+  }, [router, supabase]);
+
   if (!supabase) return <PortalUnavailable area="Systeme & Freigaben" />;
-  return <PortalShell eyebrow="Kundenbereich / Systeme" title="Freigaben mit Ãœbersicht." description="Du siehst jederzeit, welche Bausteine aktiv sind, geprÃ¼ft werden oder gerade bewusst pausieren." active="systems">
+  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Freigaben werden geladen …</div></main>;
+  return <PortalShell eyebrow="Kundenbereich / Systeme" title="Freigaben mit Übersicht." description="Du siehst jederzeit, welche Bausteine aktiv sind, geprüft werden oder gerade bewusst pausieren." active="systems">
     {!isSupabaseConfigured && <SetupNotice />}
-    <div className="system-intro"><span className="system-intro-icon"><BadgeCheck size={24} /></span><div><span className="portal-kicker">Transparente Berechtigungen</span><h2>Wir schalten nur frei, was zu deinem Projekt gehÃ¶rt.</h2><p>Neue Systeme beantragst du direkt Ã¼ber den Support. Wir prÃ¼fen Kontext, Version und ZustÃ¤ndigkeit, bevor etwas im Account sichtbar wird.</p></div></div>
-    <div className="system-grid">{systems.map((system) => <article className="system-card" key={system.slug}><div className="system-card-top"><span className="portal-row-icon"><Boxes size={17} /></span><StatusPill status={system.status} /></div><span className="portal-kicker">{system.category}</span><h2>{system.name}</h2><p>{system.description}</p><div className="system-card-foot"><span>Zuletzt geprÃ¼ft: {system.updatedAt}</span><Link className="text-link" href="/dashboard/tickets">Frage stellen <ArrowRight size={14} /></Link></div></article>)}</div>
+    {error && <p className="form-message form-error">Backend-Antwort: {error}</p>}
+    <div className="system-intro"><span className="system-intro-icon"><BadgeCheck size={24} /></span><div><span className="portal-kicker">Transparente Berechtigungen</span><h2>Wir schalten nur frei, was zu deinem Projekt gehört.</h2><p>Neue Systeme beantragst du direkt über den Support. Wir prüfen Kontext, Version und Zuständigkeit, bevor etwas im Account sichtbar wird.</p></div></div>
+    <div className="system-grid">{systems.length > 0 ? systems.map((system) => <article className="system-card" key={system.slug}><div className="system-card-top"><span className="portal-row-icon"><Boxes size={17} /></span><StatusPill status={system.status} /></div><span className="portal-kicker">{system.category}</span><h2>{system.name}</h2><p>{system.description}</p><div className="system-card-foot"><span>Zuletzt geprüft: {system.updatedAt}</span><Link className="text-link" href="/dashboard/tickets">Frage stellen <ArrowRight size={14} /></Link></div></article>) : <div className="portal-empty-row"><BadgeCheck size={18} /><span>Noch keine Systeme für dein Konto freigegeben.</span><Link className="text-link" href="/dashboard/tickets">Freigabe anfragen <ArrowRight size={14} /></Link></div>}</div>
   </PortalShell>;
 }
 
@@ -257,14 +304,82 @@ export function AdminDashboard() {
 
   async function signOut() { if (supabase) await supabase.auth.signOut(); router.push('/login'); }
   if (!supabase) return <PortalUnavailable area="Administration" />;
-  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Berechtigungen werden geprÃ¼ft â€¦</div></main>;
-  return <PortalShell eyebrow="DuoNerds / Admin" title="Ordnung fÃ¼r jedes Projekt." description="Freigaben, Nutzer und Support bleiben an einem Ort â€“ mit nachvollziehbaren Entscheidungen statt verstreuten Nachrichten." active="admin">
+  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Berechtigungen werden geprüft …</div></main>;
+  return <PortalShell eyebrow="DuoNerds / Admin" title="Ordnung für jedes Projekt." description="Freigaben, Nutzer und Support bleiben an einem Ort – mit nachvollziehbaren Entscheidungen statt verstreuten Nachrichten." active="admin">
     {!isSupabaseConfigured && <SetupNotice />}
-    <div className="admin-banner"><div><span className="portal-kicker">Admin-Arbeitsbereich</span><h2>Heute im Fokus: 2 Freigaben prÃ¼fen.</h2><p>Die OberflÃ¤che ist auf Rollen und Audit-Logs vorbereitet. Jede Freigabe kann spÃ¤ter mit einem Grund dokumentiert werden.</p></div><button className="button-duo button-primary" onClick={() => setMessage('Die Freigabe-Aktionen werden mit der Datenbankverbindung aktiviert.')}>Freigaben Ã¶ffnen <ArrowRight size={15} /></button></div>
+    <div className="admin-banner"><div><span className="portal-kicker">Admin-Arbeitsbereich</span><h2>Heute im Fokus: 2 Freigaben prüfen.</h2><p>Die Oberfläche ist auf Rollen und Audit-Logs vorbereitet. Jede Freigabe kann später mit einem Grund dokumentiert werden.</p></div><button className="button-duo button-primary" onClick={() => setMessage('Die Freigabe-Aktionen werden mit der Datenbankverbindung aktiviert.')}>Freigaben öffnen <ArrowRight size={15} /></button></div>
     {message && <p className="form-message form-info">{message}</p>}
-    <div className="portal-metrics"><Metric label="Kundenkonten" value={`${members.length}`} note="im Arbeitsbereich" icon={<Users size={17} />} /><Metric label="Offene Freigaben" value={`${requests.length}`} note="warten auf PrÃ¼fung" icon={<BadgeCheck size={17} />} /><Metric label="Support-Level" value="Aktiv" note="Team erreichbar" icon={<ShieldCheck size={17} />} /></div>
-    <div className="portal-section-grid"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Zugriffsanfragen</span><h2>Freigaben prÃ¼fen</h2></div><Link className="text-link" href="/dashboard/systeme">Systeme <ArrowRight size={14} /></Link></div><div className="portal-list">{requests.map((request) => <div className="portal-list-row" key={`${request.name}-${request.system}`}><span className="avatar-small">{request.initials}</span><div><strong>{request.name}</strong><small>{request.system} Â· {request.requestedAt}</small></div><button className="mini-action" onClick={() => setMessage('Aktion bereit: nach Backend-Verbindung wird die Freigabe gespeichert.')}>PrÃ¼fen</button></div>)}</div></section><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Konten</span><h2>Team & Kunden</h2></div><Users size={18} /></div><div className="portal-list">{members.map((member) => <div className="portal-list-row" key={member.email}><span className="avatar-small">{member.initials}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><span className="member-role">{member.role}</span><span className="member-state">{member.status}</span></div>)}</div></section></div>
+    <div className="portal-metrics"><Metric label="Kundenkonten" value={`${members.length}`} note="im Arbeitsbereich" icon={<Users size={17} />} /><Metric label="Offene Freigaben" value={`${requests.length}`} note="warten auf Prüfung" icon={<BadgeCheck size={17} />} /><Metric label="Support-Level" value="Aktiv" note="Team erreichbar" icon={<ShieldCheck size={17} />} /></div>
+    <div className="portal-section-grid"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Zugriffsanfragen</span><h2>Freigaben prüfen</h2></div><Link className="text-link" href="/dashboard/systeme">Systeme <ArrowRight size={14} /></Link></div><div className="portal-list">{requests.map((request) => <div className="portal-list-row" key={`${request.name}-${request.system}`}><span className="avatar-small">{request.initials}</span><div><strong>{request.name}</strong><small>{request.system} · {request.requestedAt}</small></div><button className="mini-action" onClick={() => setMessage('Aktion bereit: nach Backend-Verbindung wird die Freigabe gespeichert.')}>Prüfen</button></div>)}</div></section><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Konten</span><h2>Team & Kunden</h2></div><Users size={18} /></div><div className="portal-list">{members.map((member) => <div className="portal-list-row" key={member.email}><span className="avatar-small">{member.initials}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><span className="member-role">{member.role}</span><span className="member-state">{member.status}</span></div>)}</div></section></div>
     <div className="portal-bottom-actions"><button className="quiet-action" onClick={signOut}><LogIn size={15} /> Abmelden</button><span className="quiet-action"><ShieldCheck size={15} /> Aktionen werden protokolliert</span></div>
   </PortalShell>;
 }
 
+export function AdminDashboardLive() {
+  const supabase = getSupabaseBrowserClient();
+  const router = useRouter();
+  const [members, setMembers] = useState<Array<{ name: string; email: string; role: string; status: string; initials: string }>>([]);
+  const [requests, setRequests] = useState<AdminRequest[]>([]);
+  const [role, setRole] = useState<'admin' | 'support' | null>(null);
+  const [loading, setLoading] = useState(Boolean(supabase));
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busyKey, setBusyKey] = useState('');
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let mounted = true;
+    async function loadAdmin() {
+      const { data: userData } = await client.auth.getUser();
+      if (!userData.user) { router.replace('/login'); return; }
+      const profile = await client.from('profiles').select('role').eq('id', userData.user.id).single();
+      if (profile.error || (profile.data?.role !== 'admin' && profile.data?.role !== 'support')) { router.replace('/dashboard'); return; }
+      setRole(profile.data.role);
+      const [membersResult, requestResult] = await Promise.all([
+        client.from('profiles').select('id, display_name, role, created_at').order('created_at', { ascending: false }).limit(25),
+        client.from('user_systems').select('user_id, system_id, status, updated_at, profiles(display_name), systems(name)').in('status', ['pending', 'active']).order('updated_at', { ascending: false }).limit(25),
+      ]);
+      if (!mounted) return;
+      if (membersResult.error) setError(membersResult.error.message);
+      else if (membersResult.data) setMembers(membersResult.data.map((member) => ({ name: member.display_name || 'Ohne Namen', email: member.id, role: member.role === 'admin' ? 'Admin' : member.role === 'support' ? 'Support' : 'Kunde', status: 'Aktiv', initials: (member.display_name || 'DN').slice(0, 2).toUpperCase() })));
+      if (requestResult.error) setError(requestResult.error.message);
+      else if (requestResult.data) {
+        const rows = requestResult.data as unknown as Array<{ user_id: string; system_id: string; status: AdminRequest['status']; updated_at: string; profiles: { display_name: string } | null; systems: { name: string } | null }>;
+        setRequests(rows.filter((row) => row.profiles && row.systems).map((row) => ({ userId: row.user_id, systemId: row.system_id, status: row.status, name: row.profiles!.display_name || 'Ohne Namen', system: row.systems!.name, requestedAt: new Date(row.updated_at).toLocaleDateString('de-DE'), initials: (row.profiles!.display_name || 'DN').slice(0, 2).toUpperCase() })));
+      }
+      setLoading(false);
+    }
+    void loadAdmin();
+    return () => { mounted = false; };
+  }, [router, supabase]);
+
+  async function updateRequest(request: AdminRequest) {
+    if (!supabase || role !== 'admin') return;
+    const key = `${request.userId}-${request.systemId}`;
+    const nextStatus = request.status === 'active' ? 'revoked' : 'active';
+    setBusyKey(key);
+    setError('');
+    setMessage('');
+    const result = await supabase.rpc('set_system_access', { p_user_id: request.userId, p_system_id: request.systemId, p_status: nextStatus });
+    if (result.error) setError(result.error.message);
+    else {
+      setRequests((current) => current.filter((item) => item.userId !== request.userId || item.systemId !== request.systemId));
+      setMessage(nextStatus === 'active' ? `${request.system} für ${request.name} freigegeben.` : `${request.system} für ${request.name} entzogen.`);
+    }
+    setBusyKey('');
+  }
+
+  async function signOut() { if (supabase) await supabase.auth.signOut(); router.push('/login'); }
+  if (!supabase) return <PortalUnavailable area="Administration" />;
+  if (loading) return <main className="portal-page container-wide"><div className="portal-loading">Berechtigungen werden geprüft …</div></main>;
+  const pendingCount = requests.filter((request) => request.status === 'pending').length;
+  return <PortalShell eyebrow="DuoNerds / Admin" title="Ordnung für jedes Projekt." description="Freigaben, Nutzer und Support bleiben an einem Ort – mit nachvollziehbaren Entscheidungen statt verstreuten Nachrichten." active="admin">
+    <div className="admin-banner"><div><span className="portal-kicker">Admin-Arbeitsbereich</span><h2>{pendingCount} Freigaben warten auf dich.</h2><p>Admins können Zugriffe direkt freigeben oder entziehen. Jede Entscheidung wird zusammen mit Zeit, Nutzer und System im Audit-Log gespeichert.</p></div><Link className="button-duo button-primary" href="/dashboard/systeme">Systemübersicht <ArrowRight size={15} /></Link></div>
+    {error && <p className="form-message form-error">Backend-Antwort: {error}</p>}
+    {message && <p className="form-message form-info">{message}</p>}
+    <div className="portal-metrics"><Metric label="Kundenkonten" value={`${members.length}`} note="im Arbeitsbereich" icon={<Users size={17} />} /><Metric label="Offene Freigaben" value={`${pendingCount}`} note="warten auf Prüfung" icon={<BadgeCheck size={17} />} /><Metric label="Deine Rolle" value={role === 'admin' ? 'Admin' : 'Support'} note={role === 'admin' ? 'Freigaben möglich' : 'Lesender Zugriff'} icon={<ShieldCheck size={17} />} /></div>
+    <div className="portal-section-grid"><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Zugriffsanfragen</span><h2>Freigaben prüfen</h2></div><Link className="text-link" href="/dashboard/systeme">Systeme <ArrowRight size={14} /></Link></div><div className="portal-list">{requests.length > 0 ? requests.map((request) => { const busy = busyKey === `${request.userId}-${request.systemId}`; const active = request.status === 'active'; return <div className="portal-list-row" key={`${request.userId}-${request.systemId}`}><span className="avatar-small">{request.initials}</span><div><strong>{request.name}</strong><small>{request.system} · {request.requestedAt}</small></div><StatusPill status={request.status} /><button className="mini-action" disabled={role !== 'admin' || busy} onClick={() => void updateRequest(request)}>{busy ? 'Speichern …' : role !== 'admin' ? 'Nur Admin' : active ? 'Entziehen' : 'Freigeben'}</button></div>; }) : <div className="portal-empty-row"><BadgeCheck size={18} /><span>Keine offenen oder aktiven Freigaben.</span></div>}</div></section><section className="portal-panel"><div className="panel-heading"><div><span className="portal-kicker">Konten</span><h2>Team & Kunden</h2></div><Users size={18} /></div><div className="portal-list">{members.map((member) => <div className="portal-list-row" key={member.email}><span className="avatar-small">{member.initials}</span><div><strong>{member.name}</strong><small>Account-ID: {member.email}</small></div><span className="member-role">{member.role}</span><span className="member-state">{member.status}</span></div>)}</div></section></div>
+    <div className="portal-bottom-actions"><button className="quiet-action" onClick={signOut}><LogIn size={15} /> Abmelden</button><span className="quiet-action"><ShieldCheck size={15} /> Aktionen werden protokolliert</span></div>
+  </PortalShell>;
+}
