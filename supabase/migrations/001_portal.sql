@@ -72,6 +72,14 @@ create table if not exists public.product_role_access (
   primary key (product_id, discord_role_id)
 );
 
+create table if not exists public.product_role_name_access (
+  product_id text not null,
+  discord_role_name text not null,
+  label text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (product_id, discord_role_name)
+);
+
 create table if not exists public.user_product_access (
   user_id uuid not null references public.profiles(id) on delete cascade,
   product_id text not null,
@@ -172,6 +180,7 @@ alter table public.systems enable row level security;
 alter table public.user_systems enable row level security;
 alter table public.discord_memberships enable row level security;
 alter table public.product_role_access enable row level security;
+alter table public.product_role_name_access enable row level security;
 alter table public.user_product_access enable row level security;
 alter table public.tickets enable row level security;
 alter table public.ticket_messages enable row level security;
@@ -212,6 +221,14 @@ create policy "product_role_access_select_staff" on public.product_role_access
 
 drop policy if exists "product_role_access_admin_write" on public.product_role_access;
 create policy "product_role_access_admin_write" on public.product_role_access
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "product_role_name_access_select_staff" on public.product_role_name_access;
+create policy "product_role_name_access_select_staff" on public.product_role_name_access
+  for select to authenticated using (public.is_staff());
+
+drop policy if exists "product_role_name_access_admin_write" on public.product_role_name_access;
+create policy "product_role_name_access_admin_write" on public.product_role_name_access
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists "user_product_access_select_own_or_staff" on public.user_product_access;
